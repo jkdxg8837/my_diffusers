@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Evaluate LoRA initialization from full-finetune (FFT) weight deltas.
+Evaluate LoRA initialization from full-finetune (FFT) weight deltas for Flux.
 
 For each FFT checkpoint step, applies three initialization methods:
   - LoRA-One: SVD of -(fft - pretrained) delta
@@ -19,16 +19,16 @@ import torch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from peft import LoraConfig
-from diffusers import SD3Transformer2DModel, StableDiffusion3Pipeline
+from diffusers import FluxTransformer2DModel, FluxPipeline
 from diffusers.training_utils import free_memory
 from lora_one_utils import reinit_lora_from_fft
 
 # ---------------------------------------------------------------------------
 # Configuration  (edit these as needed)
 # ---------------------------------------------------------------------------
-MODEL_NAME = "stabilityai/stable-diffusion-3-medium-diffusers"
-FFT_DIR = "/home/j/jiayang_gu/workspace/diffusers/slurm/dog-weight-fft-lowerlr"                 # directory that contains checkpoint-{step}/
-OUTPUT_BASE = "./eval_fft_lora_init"  # results go here
+MODEL_NAME = "black-forest-labs/FLUX.1-dev"
+FFT_DIR = "./dog-flux-fft"                 # directory that contains checkpoint-{step}/
+OUTPUT_BASE = "./eval_fft_lora_init_flux"  # results go here
 RANK = 32
 SEED = 42
 NUM_IMAGES = 5
@@ -51,7 +51,8 @@ PROMPT_LIST = [
 TARGET_MODULES = [
     "attn.to_k", "attn.to_q", "attn.to_v", "attn.to_out.0",
     "attn.add_k_proj", "attn.add_q_proj", "attn.add_v_proj", "attn.to_add_out",
-    "ff.net.0.proj", "ff.net.2", "norm_out.linear", "proj_out",
+    "ff.net.0.proj", "ff.net.2",
+    "ff_context.net.0.proj", "ff_context.net.2",
 ]
 
 INIT_CONFIGS = {
@@ -102,9 +103,19 @@ def generate_images(pipeline, output_dir, seed, num_images):
         os.makedirs(save_dir, exist_ok=True)
         print(f"    [{prompt_idx}] {prompt}")
 
+        # Pre-compute prompt embeddings outside autocast (T5 does not support fp16)
+        with torch.no_grad():
+            prompt_embeds, pooled_prompt_embeds, text_ids = pipeline.encode_prompt(
+                prompt, prompt_2=prompt
+            )
+
         with torch.autocast(device_type="cuda"):
             for img_idx in range(num_images):
-                image = pipeline(prompt=prompt, generator=generator).images[0]
+                image = pipeline(
+                    prompt_embeds=prompt_embeds,
+                    pooled_prompt_embeds=pooled_prompt_embeds,
+                    generator=generator,
+                ).images[0]
                 image.save(os.path.join(save_dir, f"{img_idx}.png"))
 
 
@@ -114,13 +125,13 @@ def generate_images(pipeline, output_dir, seed, num_images):
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    weight_dtype = torch.float16
+    weight_dtype = torch.bfloat16
 
     # ------------------------------------------------------------------
     # Load pipeline once (VAE + text encoders stay in memory throughout)
     # ------------------------------------------------------------------
     print("Loading base pipeline...")
-    pipeline = StableDiffusion3Pipeline.from_pretrained(
+    pipeline = FluxPipeline.from_pretrained(
         MODEL_NAME, torch_dtype=weight_dtype,
     )
     pipeline = pipeline.to(device)
@@ -151,7 +162,7 @@ def main():
             # Reload fresh transformer (avoids residual LoRA / weight-offset
             # contamination from previous iteration)
             print("  Loading fresh transformer...")
-            transformer = SD3Transformer2DModel.from_pretrained(
+            transformer = FluxTransformer2DModel.from_pretrained(
                 MODEL_NAME, subfolder="transformer", torch_dtype=weight_dtype,
             )
 
