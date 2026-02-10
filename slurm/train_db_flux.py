@@ -24,6 +24,7 @@ cmd = [
     "--validation_epochs", "25",
     "--seed", "0",
     "--push_to_hub",
+    "--repeats","8",
 ]
 
 subprocess.run(cmd)

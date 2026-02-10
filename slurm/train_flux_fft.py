@@ -5,7 +5,7 @@ instance_dir = "dog"
 output_dir = "trained-flux"
 
 cmd = [
-    "accelerate", "launch", "train_dreambooth_flux.py",
+    "accelerate", "launch", "../train_dreambooth_flux.py",
     "--pretrained_model_name_or_path", model_name,
     "--instance_data_dir", instance_dir,
     "--output_dir", output_dir,
@@ -24,7 +24,8 @@ cmd = [
     "--validation_prompt", "A photo of sks dog in a bucket",
     "--validation_epochs", "25",
     "--seed", "0",
-    "--push_to_hub"
+    "--push_to_hub",
+    "--repeats","8",
 ]
 
 subprocess.run(cmd, check=True)
