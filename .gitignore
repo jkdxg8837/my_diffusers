@@ -179,3 +179,11 @@ tags
 
 # wandb
 wandb
+
+joboutput
+
+slurm/dog-*
+
+slurm/trained-flux-lora
+
+slurm/dog4reinit
