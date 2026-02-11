@@ -407,6 +407,12 @@ def parse_args(input_args=None):
         help="LoRA alpha to be used for additional scaling.",
     )
     parser.add_argument("--lora_dropout", type=float, default=0.0, help="Dropout probability for LoRA layers")
+    parser.add_argument(
+        "--full_finetune",
+        action="store_true",
+        default=False,
+        help="Whether to do full fine-tuning of the transformer instead of LoRA training.",
+    )
 
     parser.add_argument(
         "--with_prior_preservation",
@@ -1194,10 +1200,11 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
     text_encoder.requires_grad_(False)
-
-    # We only train the additional adapter LoRA layers
-    transformer.requires_grad_(False)
     vae.requires_grad_(False)
+
+    if not args.full_finetune:
+        # We only train the additional adapter LoRA layers
+        transformer.requires_grad_(False)
 
     if args.enable_npu_flash_attention:
         if is_torch_npu_available():
@@ -1246,20 +1253,22 @@ def main(args):
     if args.gradient_checkpointing:
         transformer.enable_gradient_checkpointing()
 
-    if args.lora_layers is not None:
-        target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
-    else:
-        target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
+    transformer_lora_config = None
+    if not args.full_finetune:
+        if args.lora_layers is not None:
+            target_modules = [layer.strip() for layer in args.lora_layers.split(",")]
+        else:
+            target_modules = ["to_k", "to_q", "to_v", "to_out.0"]
 
-    # now we will add new LoRA weights the transformer layers
-    transformer_lora_config = LoraConfig(
-        r=args.rank,
-        lora_alpha=args.lora_alpha,
-        lora_dropout=args.lora_dropout,
-        init_lora_weights="gaussian",
-        target_modules=target_modules,
-    )
-    transformer.add_adapter(transformer_lora_config)
+        # now we will add new LoRA weights the transformer layers
+        transformer_lora_config = LoraConfig(
+            r=args.rank,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
+            init_lora_weights="gaussian",
+            target_modules=target_modules,
+        )
+        transformer.add_adapter(transformer_lora_config)
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
@@ -1268,91 +1277,112 @@ def main(args):
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
-        transformer_cls = type(unwrap_model(transformer))
-
-        # 1) Validate and pick the transformer model
-        modules_to_save: dict[str, Any] = {}
-        transformer_model = None
-
-        for model in models:
-            if isinstance(unwrap_model(model), transformer_cls):
-                transformer_model = model
-                modules_to_save["transformer"] = model
-            else:
-                raise ValueError(f"unexpected save model: {model.__class__}")
-
-        if transformer_model is None:
-            raise ValueError("No transformer model found in 'models'")
-
-        # 2) Optionally gather FSDP state dict once
-        state_dict = accelerator.get_state_dict(model) if is_fsdp else None
-
-        # 3) Only main process materializes the LoRA state dict
-        transformer_lora_layers_to_save = None
-        if accelerator.is_main_process:
-            peft_kwargs = {}
-            if is_fsdp:
-                peft_kwargs["state_dict"] = state_dict
-
-            transformer_lora_layers_to_save = get_peft_model_state_dict(
-                unwrap_model(transformer_model) if is_fsdp else transformer_model,
-                **peft_kwargs,
-            )
-
-            if is_fsdp:
-                transformer_lora_layers_to_save = _to_cpu_contiguous(transformer_lora_layers_to_save)
-
-            # make sure to pop weight so that corresponding model is not saved again
-            if weights:
-                weights.pop()
-
-            Flux2KleinPipeline.save_lora_weights(
-                output_dir,
-                transformer_lora_layers=transformer_lora_layers_to_save,
-                **_collate_lora_metadata(modules_to_save),
-            )
-
-    def load_model_hook(models, input_dir):
-        transformer_ = None
-
-        if not is_fsdp:
-            while len(models) > 0:
-                model = models.pop()
-
+        if args.full_finetune:
+            for model in models:
                 if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
-                    transformer_ = unwrap_model(model)
+                    unwrap_model(model).save_pretrained(os.path.join(output_dir, "transformer"))
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
+                if weights:
+                    weights.pop()
         else:
-            transformer_ = Flux2Transformer2DModel.from_pretrained(
-                args.pretrained_model_name_or_path,
-                subfolder="transformer",
-            )
-            transformer_.add_adapter(transformer_lora_config)
+            transformer_cls = type(unwrap_model(transformer))
 
-        lora_state_dict = Flux2KleinPipeline.lora_state_dict(input_dir)
+            # 1) Validate and pick the transformer model
+            modules_to_save: dict[str, Any] = {}
+            transformer_model = None
 
-        transformer_state_dict = {
-            f"{k.replace('transformer.', '')}": v for k, v in lora_state_dict.items() if k.startswith("transformer.")
-        }
-        transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
-        incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")
-        if incompatible_keys is not None:
-            # check only for unexpected keys
-            unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
-            if unexpected_keys:
-                logger.warning(
-                    f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
-                    f" {unexpected_keys}. "
+            for model in models:
+                if isinstance(unwrap_model(model), transformer_cls):
+                    transformer_model = model
+                    modules_to_save["transformer"] = model
+                else:
+                    raise ValueError(f"unexpected save model: {model.__class__}")
+
+            if transformer_model is None:
+                raise ValueError("No transformer model found in 'models'")
+
+            # 2) Optionally gather FSDP state dict once
+            state_dict = accelerator.get_state_dict(model) if is_fsdp else None
+
+            # 3) Only main process materializes the LoRA state dict
+            transformer_lora_layers_to_save = None
+            if accelerator.is_main_process:
+                peft_kwargs = {}
+                if is_fsdp:
+                    peft_kwargs["state_dict"] = state_dict
+
+                transformer_lora_layers_to_save = get_peft_model_state_dict(
+                    unwrap_model(transformer_model) if is_fsdp else transformer_model,
+                    **peft_kwargs,
                 )
 
-        # Make sure the trainable params are in float32. This is again needed since the base models
-        # are in `weight_dtype`. More details:
-        # https://github.com/huggingface/diffusers/pull/6514#discussion_r1449796804
-        if args.mixed_precision == "fp16":
-            models = [transformer_]
-            # only upcast trainable parameters (LoRA) into fp32
-            cast_training_params(models)
+                if is_fsdp:
+                    transformer_lora_layers_to_save = _to_cpu_contiguous(transformer_lora_layers_to_save)
+
+                # make sure to pop weight so that corresponding model is not saved again
+                if weights:
+                    weights.pop()
+
+                Flux2KleinPipeline.save_lora_weights(
+                    output_dir,
+                    transformer_lora_layers=transformer_lora_layers_to_save,
+                    **_collate_lora_metadata(modules_to_save),
+                )
+
+    def load_model_hook(models, input_dir):
+        if args.full_finetune:
+            while len(models) > 0:
+                model = models.pop()
+                if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                    load_model = Flux2Transformer2DModel.from_pretrained(
+                        input_dir, subfolder="transformer"
+                    )
+                    unwrap_model(model).load_state_dict(load_model.state_dict())
+                    del load_model
+                else:
+                    raise ValueError(f"unexpected load model: {model.__class__}")
+        else:
+            transformer_ = None
+
+            if not is_fsdp:
+                while len(models) > 0:
+                    model = models.pop()
+
+                    if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
+                        transformer_ = unwrap_model(model)
+                    else:
+                        raise ValueError(f"unexpected save model: {model.__class__}")
+            else:
+                transformer_ = Flux2Transformer2DModel.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    subfolder="transformer",
+                )
+                transformer_.add_adapter(transformer_lora_config)
+
+            lora_state_dict = Flux2KleinPipeline.lora_state_dict(input_dir)
+
+            transformer_state_dict = {
+                f"{k.replace('transformer.', '')}": v for k, v in lora_state_dict.items() if k.startswith("transformer.")
+            }
+            transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
+            incompatible_keys = set_peft_model_state_dict(transformer_, transformer_state_dict, adapter_name="default")
+            if incompatible_keys is not None:
+                # check only for unexpected keys
+                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+                if unexpected_keys:
+                    logger.warning(
+                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
+                        f" {unexpected_keys}. "
+                    )
+
+            # Make sure the trainable params are in float32. This is again needed since the base models
+            # are in `weight_dtype`. More details:
+            # https://github.com/huggingface/diffusers/pull/6514#discussion_r1449796804
+            if args.mixed_precision == "fp16":
+                models = [transformer_]
+                # only upcast trainable parameters (LoRA) into fp32
+                cast_training_params(models)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -1596,7 +1626,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        tracker_name = "dreambooth-flux2-klein-lora"
+        tracker_name = "dreambooth-flux2-klein-fft" if args.full_finetune else "dreambooth-flux2-klein-lora"
         args_cp = vars(args).copy()
         args_cp["text_encoder_out_layers"] = str(args_cp["text_encoder_out_layers"])
         accelerator.init_trackers(tracker_name, config=args_cp)
@@ -1851,80 +1881,118 @@ def main(args):
                 del pipeline
                 free_memory()
 
-    # Save the lora layers
+    # Save the model
     accelerator.wait_for_everyone()
 
-    if is_fsdp:
-        transformer = unwrap_model(transformer)
-        state_dict = accelerator.get_state_dict(transformer)
-    if accelerator.is_main_process:
-        modules_to_save = {}
-        if is_fsdp:
-            if args.bnb_quantization_config_path is None:
-                if args.upcast_before_saving:
-                    state_dict = {
-                        k: v.to(torch.float32) if isinstance(v, torch.Tensor) else v for k, v in state_dict.items()
-                    }
-                else:
-                    state_dict = {
-                        k: v.to(weight_dtype) if isinstance(v, torch.Tensor) else v for k, v in state_dict.items()
-                    }
+    if args.full_finetune:
+        if accelerator.is_main_process:
+            transformer_to_save = unwrap_model(transformer)
+            if args.upcast_before_saving:
+                transformer_to_save.to(torch.float32)
+            else:
+                transformer_to_save.to(weight_dtype)
+            transformer_to_save.save_pretrained(os.path.join(args.output_dir, "transformer"))
 
-            transformer_lora_layers = get_peft_model_state_dict(
-                transformer,
-                state_dict=state_dict,
-            )
-            transformer_lora_layers = {
-                k: v.detach().cpu().contiguous() if isinstance(v, torch.Tensor) else v
-                for k, v in transformer_lora_layers.items()
-            }
-
-        else:
-            transformer = unwrap_model(transformer)
-            if args.bnb_quantization_config_path is None:
-                if args.upcast_before_saving:
-                    transformer.to(torch.float32)
-                else:
-                    transformer = transformer.to(weight_dtype)
-            transformer_lora_layers = get_peft_model_state_dict(transformer)
-
-        modules_to_save["transformer"] = transformer
-
-        Flux2KleinPipeline.save_lora_weights(
-            save_directory=args.output_dir,
-            transformer_lora_layers=transformer_lora_layers,
-            **_collate_lora_metadata(modules_to_save),
-        )
-
-        images = []
-        run_validation = (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt)
-        should_run_final_inference = not args.skip_final_inference and run_validation
-        if should_run_final_inference:
-            pipeline = Flux2KleinPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                revision=args.revision,
-                variant=args.variant,
-                torch_dtype=weight_dtype,
-            )
-            # load attention processors
-            pipeline.load_lora_weights(args.output_dir)
-
-            # run inference
             images = []
-            if args.validation_prompt and args.num_validation_images > 0:
-                images = log_validation(
-                    pipeline=pipeline,
-                    args=args,
-                    accelerator=accelerator,
-                    pipeline_args=validation_embeddings,
-                    epoch=epoch,
-                    is_final_validation=True,
+            run_validation = (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt)
+            should_run_final_inference = not args.skip_final_inference and run_validation
+            if should_run_final_inference:
+                pipeline = Flux2KleinPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    transformer=transformer_to_save,
+                    revision=args.revision,
+                    variant=args.variant,
                     torch_dtype=weight_dtype,
                 )
-            images = None
-            del pipeline
-            free_memory()
 
+                # run inference
+                images = []
+                if args.validation_prompt and args.num_validation_images > 0:
+                    images = log_validation(
+                        pipeline=pipeline,
+                        args=args,
+                        accelerator=accelerator,
+                        pipeline_args=validation_embeddings,
+                        epoch=epoch,
+                        is_final_validation=True,
+                        torch_dtype=weight_dtype,
+                    )
+                images = None
+                del pipeline
+                free_memory()
+    else:
+        if is_fsdp:
+            transformer = unwrap_model(transformer)
+            state_dict = accelerator.get_state_dict(transformer)
+        if accelerator.is_main_process:
+            modules_to_save = {}
+            if is_fsdp:
+                if args.bnb_quantization_config_path is None:
+                    if args.upcast_before_saving:
+                        state_dict = {
+                            k: v.to(torch.float32) if isinstance(v, torch.Tensor) else v for k, v in state_dict.items()
+                        }
+                    else:
+                        state_dict = {
+                            k: v.to(weight_dtype) if isinstance(v, torch.Tensor) else v for k, v in state_dict.items()
+                        }
+
+                transformer_lora_layers = get_peft_model_state_dict(
+                    transformer,
+                    state_dict=state_dict,
+                )
+                transformer_lora_layers = {
+                    k: v.detach().cpu().contiguous() if isinstance(v, torch.Tensor) else v
+                    for k, v in transformer_lora_layers.items()
+                }
+
+            else:
+                transformer = unwrap_model(transformer)
+                if args.bnb_quantization_config_path is None:
+                    if args.upcast_before_saving:
+                        transformer.to(torch.float32)
+                    else:
+                        transformer = transformer.to(weight_dtype)
+                transformer_lora_layers = get_peft_model_state_dict(transformer)
+
+            modules_to_save["transformer"] = transformer
+
+            Flux2KleinPipeline.save_lora_weights(
+                save_directory=args.output_dir,
+                transformer_lora_layers=transformer_lora_layers,
+                **_collate_lora_metadata(modules_to_save),
+            )
+
+            images = []
+            run_validation = (args.validation_prompt and args.num_validation_images > 0) or (args.final_validation_prompt)
+            should_run_final_inference = not args.skip_final_inference and run_validation
+            if should_run_final_inference:
+                pipeline = Flux2KleinPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    revision=args.revision,
+                    variant=args.variant,
+                    torch_dtype=weight_dtype,
+                )
+                # load attention processors
+                pipeline.load_lora_weights(args.output_dir)
+
+                # run inference
+                images = []
+                if args.validation_prompt and args.num_validation_images > 0:
+                    images = log_validation(
+                        pipeline=pipeline,
+                        args=args,
+                        accelerator=accelerator,
+                        pipeline_args=validation_embeddings,
+                        epoch=epoch,
+                        is_final_validation=True,
+                        torch_dtype=weight_dtype,
+                    )
+                images = None
+                del pipeline
+                free_memory()
+
+    if accelerator.is_main_process:
         validation_prompt = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
         quant_training = None
         if args.do_fp8_training:
