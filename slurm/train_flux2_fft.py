@@ -6,7 +6,7 @@ output_dir = "trained-flux2-klein"
 
 cmd = [
     "accelerate", "launch", 
-    "--config_file", "../accelerate_config_zero2.yaml",
+    "--config_file", "./accelerate_zero2.yaml",
     "../train_dreambooth_lora_flux2_klein.py",
     "--do_fp8_training",
     "--pretrained_model_name_or_path", model_name,
