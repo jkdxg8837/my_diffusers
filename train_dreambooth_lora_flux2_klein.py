@@ -1606,6 +1606,7 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
+    accelerator.state.deepspeed_plugin.deepspeed_config['train_micro_batch_size_per_gpu'] = args.train_batch_size
     transformer, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         transformer, optimizer, train_dataloader, lr_scheduler
     )
@@ -1715,7 +1716,7 @@ def main(args):
                     with offload_models(vae, device=accelerator.device, offload=args.offload):
                         pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                     model_input = vae.encode(pixel_values).latent_dist.mode()
-
+                model_input = model_input.to(dtype=transformer.dtype)
                 model_input = Flux2KleinPipeline._patchify_latents(model_input)
                 model_input = (model_input - latents_bn_mean) / latents_bn_std
 
@@ -1745,12 +1746,13 @@ def main(args):
                 packed_noisy_model_input = Flux2KleinPipeline._pack_latents(noisy_model_input)
 
                 # handle guidance
-                if transformer.config.guidance_embeds:
+                model_config = transformer.module.config if hasattr(transformer, "module") else transformer.config
+                if model_config.guidance_embeds:
                     guidance = torch.full([1], args.guidance_scale, device=accelerator.device)
                     guidance = guidance.expand(model_input.shape[0])
                 else:
                     guidance = None
-
+                packed_noisy_model_input = packed_noisy_model_input.to(dtype=transformer.dtype)
                 # Predict the noise residual
                 model_pred = transformer(
                     hidden_states=packed_noisy_model_input,  # (B, image_seq_len, C)

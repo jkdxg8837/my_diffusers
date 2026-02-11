@@ -2,7 +2,7 @@
 #
 #SBATCH --job-name=diff_finetune # Job name for tracking
 #SBATCH --partition=gpu  # Partition you wish to use (see above for list)
-#SBATCH --gres=gpu:ampere_a100:1 # Number of GPUs to use
+#SBATCH --gres=gpu:lovelace_l40:1 # Number of GPUs to use
 #SBATCH --account=su007-hw-gpu
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32      # Number of CPU threads used by your job

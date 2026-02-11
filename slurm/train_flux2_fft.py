@@ -27,7 +27,7 @@ cmd = [
     "--max_train_steps", "500",
     "--seed", "0",
     "--cache_latents",
-    "--full_finetune"
+    "--full_finetune",
     "--repeats","8",
 ]
 
