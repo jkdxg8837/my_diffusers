@@ -1,5 +1,5 @@
 mode: svd
 weight: default
 dtype: fp32
-stable_gamma: 36
+stable_gamma: 121
 scale: default

@@ -6,7 +6,7 @@ import sys
 os.environ["MODEL_NAME"] = "stabilityai/stable-diffusion-3-medium-diffusers"
 os.environ["INSTANCE_DIR"] = "./dog"
 # os.environ["OUTPUT_DIR"] = "sd3-dog-singlecard-reinit80-randomseed-woprecondition-POS-crossAtt-scaleLR"
-os.environ["OUTPUT_DIR"] = "./dog-weight-fft-lowerlr"
+os.environ["OUTPUT_DIR"] = "./dog-weight-svd-121"
 time_step = 0.2
 re_init_schedule = "multi"
 re_init_bsz = 1
@@ -45,7 +45,7 @@ cmd = [
     # "--baseline",
     "--max_train_steps", "500",
     "--init_config", "/home/j/jiayang_gu/workspace/diffusers/config/svd.yaml",
-    "--full_finetune",
+    # "--full_finetune",
     # "--with_prior_preservation",
     # "--class_data_dir",
     # os.environ.get("INSTANCE_DIR"),

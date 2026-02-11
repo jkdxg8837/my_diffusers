@@ -15,4 +15,4 @@ source /home/j/jiayang_gu/.bashrc
 source activate zimage
 
 ## Run the analysis ##
-python analyze_weights.py
+python -u analyze_weights.py

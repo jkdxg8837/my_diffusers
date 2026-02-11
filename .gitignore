@@ -189,3 +189,9 @@ slurm/trained-flux-lora
 slurm/dog4reinit
 
 slurm/eval_fft_lora_init
+
+*.bin
+
+*.pkl
+
+*.safetensors

@@ -27,12 +27,15 @@ BASE_OUTPUT_DIR = "./"
 MODEL_NAME = "stabilityai/stable-diffusion-3-medium-diffusers"
 
 CHECKPOINT_STEPS = [0, 1, 10, 20, 50, 100, 150, 200, 300, 400, 500]
+# CHECKPOINT_STEPS = [1, 100, 500]
 
 MAX_MODULES = 100  # Sample at most this many modules to speed up analysis
 
 METHODS = {
+    "lora_svd": {"type": "lora", "dir": os.path.join(BASE_OUTPUT_DIR, "dog-weight-svd")},
     "lora_baseline": {"type": "lora", "dir": os.path.join(BASE_OUTPUT_DIR, "dog-base")},
     "lora_one": {"type": "lora", "dir": os.path.join(BASE_OUTPUT_DIR, "dog-lora-one-gamma64")},
+    "lora_ga": {"type": "lora", "dir": os.path.join(BASE_OUTPUT_DIR, "dog-lora-ga")},
     "full_finetune": {"type": "full_ft", "dir": os.path.join(BASE_OUTPUT_DIR, "dog-fft")},
 }
 
@@ -150,8 +153,6 @@ def load_loss_curve(method_dir):
 
 def get_checkpoint_dir(method_info, step, max_step=500):
     """Return the checkpoint directory for a given method and step."""
-    if step == max_step:
-        return method_info["dir"]
     return os.path.join(method_info["dir"], f"checkpoint-{step}")
 
 
@@ -294,8 +295,9 @@ def main():
     # Compare full_finetune vs lora_baseline and full_finetune vs lora_one
     cross_comparisons = {
         "full_finetune_vs_lora_baseline": ("full_finetune", "lora_baseline"),
-        "full_finetune_vs_lora_one": ("full_finetune", "lora_one"),
         "lora_baseline_vs_lora_one": ("lora_baseline", "lora_one"),
+        "full_finetune_vs_lora_ga": ("full_finetune", "lora_ga"),
+        "full_finetune_vs_lora_svd": ("full_finetune", "lora_svd"),
     }
 
     results["cross_method"] = {}

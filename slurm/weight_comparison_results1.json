@@ -1,0 +1,73 @@
+{
+  "cross_method": {
+    "full_finetune_vs_lora_baseline": {
+      "1": {
+        "total_l2_norm": 2.4063925460518503,
+        "total_base_norm": 879.3308617662485,
+        "total_relative_l2": 0.0027366178655646215,
+        "mean_principal_angle_deg": 7.735172271728516,
+        "num_modules": 100
+      },
+      "100": {
+        "total_l2_norm": 19.14209371140425,
+        "total_base_norm": 879.453965131645,
+        "total_relative_l2": 0.02176588482211105,
+        "mean_principal_angle_deg": 40.62757110595703,
+        "num_modules": 100
+      },
+      "500": {
+        "total_l2_norm": 43.272020734206855,
+        "total_base_norm": 879.807797866697,
+        "total_relative_l2": 0.04918349307556735,
+        "mean_principal_angle_deg": 54.03913497924805,
+        "num_modules": 100
+      }
+    },
+    "full_finetune_vs_lora_one": {
+      "1": {
+        "total_l2_norm": 1.9836159567211435,
+        "total_base_norm": 879.3308617662485,
+        "total_relative_l2": 0.0022558243352641997,
+        "mean_principal_angle_deg": 6.368890762329102,
+        "num_modules": 100
+      },
+      "100": {
+        "total_l2_norm": 14.154859846409263,
+        "total_base_norm": 879.453965131645,
+        "total_relative_l2": 0.016095054894988654,
+        "mean_principal_angle_deg": 34.05540466308594,
+        "num_modules": 100
+      },
+      "500": {
+        "total_l2_norm": 32.74395326347313,
+        "total_base_norm": 879.807797866697,
+        "total_relative_l2": 0.03721716645711555,
+        "mean_principal_angle_deg": 49.7691535949707,
+        "num_modules": 100
+      }
+    },
+    "lora_baseline_vs_lora_one": {
+      "1": {
+        "total_l2_norm": 1.3976418282452312,
+        "total_base_norm": 879.3267247181053,
+        "total_relative_l2": 0.001589445411992098,
+        "mean_principal_angle_deg": 4.8916144371032715,
+        "num_modules": 100
+      },
+      "100": {
+        "total_l2_norm": 13.684492502672489,
+        "total_base_norm": 879.4259530912617,
+        "total_relative_l2": 0.015560710318555259,
+        "mean_principal_angle_deg": 32.643856048583984,
+        "num_modules": 100
+      },
+      "500": {
+        "total_l2_norm": 37.39975761139902,
+        "total_base_norm": 879.9947244074375,
+        "total_relative_l2": 0.04249997934542495,
+        "mean_principal_angle_deg": 52.22038650512695,
+        "num_modules": 100
+      }
+    }
+  }
+}
