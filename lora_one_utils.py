@@ -360,6 +360,181 @@ def estimate_gradient(
     torch.cuda.empty_cache()
     return named_grads
 
+
+def collect_gradient_fixed_noise(
+    models, dataloader, args, noise_scheduler_copy, accelerator, text_encoders, tokenizers,
+    noise_seed=42,
+) -> Dict[str, torch.Tensor]:
+    r"""
+    Collect the one-step full gradient of LoRA-target parameters with fixed (deterministic) noise.
+
+    Similar to estimate_gradient, but:
+    - Noise is fixed: generated deterministically from a seeded CPU generator so that
+      the same noise is produced across runs for the same seed.
+    - Single pass through the entire dataloader (full-batch gradient).
+    - Images and text come from the dataloader / args.instance_prompt (not fixed).
+
+    Returns:
+        Dict mapping parameter names to their averaged gradient tensors.
+    """
+    def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
+        sigmas = noise_scheduler_copy.sigmas.to(device=accelerator.device, dtype=dtype)
+        schedule_timesteps = noise_scheduler_copy.timesteps.to(accelerator.device)
+        timesteps = timesteps.to(accelerator.device)
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+
+        sigma = sigmas[step_indices].flatten()
+        while len(sigma.shape) < n_dim:
+            sigma = sigma.unsqueeze(-1)
+        return sigma
+
+    transformer, vae = models[0], models[1]
+    log.info("Collecting gradient with fixed noise (seed=%d)", noise_seed)
+    transformer.train()
+
+    for param in transformer.parameters():
+        param.requires_grad = True
+
+    grad_params = [p for p in transformer.parameters() if p.requires_grad]
+    log.info(f"Number of parameters requiring gradients: {len(grad_params)}")
+    if len(grad_params) == 0:
+        log.warning("No parameters require gradients!")
+
+    named_grads = {}
+    hooks = []
+    vae_config_shift_factor = vae.config.shift_factor
+    vae_config_scaling_factor = vae.config.scaling_factor
+    weight_dtype = torch.float16
+
+    for name, param in transformer.named_parameters():
+        if param.requires_grad:
+            hook = param.register_hook(get_record_gradient_hook(transformer, named_grads))
+            hooks.append(hook)
+
+    # Pre-compute text embeddings (fixed prompt, same as training)
+    def compute_text_embeddings(prompt, text_encoders, tokenizers):
+        with torch.no_grad():
+            from train_dreambooth_lora_one_sd3 import encode_prompt
+            prompt_embeds, pooled_prompt_embeds = encode_prompt(
+                text_encoders, tokenizers, prompt, args.max_sequence_length
+            )
+            prompt_embeds = prompt_embeds.to(accelerator.device)
+            pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
+        return prompt_embeds, pooled_prompt_embeds
+
+    prompt_embeds, pooled_prompt_embeds = compute_text_embeddings(
+        args.instance_prompt, text_encoders, tokenizers
+    )
+
+    # Fixed noise generator on CPU for cross-run reproducibility
+    noise_gen = torch.Generator(device='cpu')
+    noise_gen.manual_seed(noise_seed)
+
+    transformer_lora_parameters = list(filter(lambda p: p.requires_grad, transformer.parameters()))
+
+    num = 0
+    for batch in tqdm(dataloader, desc="Collecting gradient (fixed noise)"):
+        num += 1
+
+        pixel_values = batch["pixel_values"].to(dtype=vae.dtype, device=vae.device)
+        with torch.no_grad():
+            model_input = vae.encode(pixel_values).latent_dist.sample()
+            model_input = (model_input - vae_config_shift_factor) * vae_config_scaling_factor
+            model_input = model_input.to(dtype=weight_dtype)
+
+        bsz = model_input.shape[0]
+
+        # Fixed noise: deterministic from seeded CPU generator
+        noise = torch.randn(
+            model_input.shape, generator=noise_gen, dtype=model_input.dtype, device='cpu'
+        ).to(model_input.device)
+
+        # Sample timesteps (same scheme as estimate_gradient)
+        u = sample_with_matched_distribution(n=bsz, mean=0, std=1.0)
+        print("u is set to ", u)
+
+        indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
+        timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
+        sigmas = get_sigmas(timesteps, n_dim=model_input.ndim, dtype=model_input.dtype)
+        sigmas = sigmas.detach()
+        noisy_model_input = (1.0 - sigmas) * model_input + sigmas * noise
+
+        # Forward pass
+        model_pred = transformer(
+            hidden_states=noisy_model_input,
+            timestep=timesteps,
+            encoder_hidden_states=prompt_embeds,
+            pooled_projections=pooled_prompt_embeds,
+            return_dict=False,
+        )[0]
+
+        if args.precondition_outputs:
+            model_pred = model_pred * (-sigmas.detach()) + noisy_model_input
+
+        weighting = compute_loss_weighting_for_sd3(weighting_scheme=args.weighting_scheme, sigmas=sigmas)
+        weighting = weighting.detach()
+
+        # Flow matching loss
+        if args.precondition_outputs:
+            target = model_input.detach()
+        else:
+            target = noise - model_input.detach()
+
+        if args.with_prior_preservation:
+            model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
+            target, target_prior = torch.chunk(target, 2, dim=0)
+            weighting, weighting_prior = torch.chunk(weighting, 2, dim=0)
+            prior_loss = torch.mean(
+                (weighting.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
+                    target_prior.shape[0], -1
+                ),
+                1,
+            )
+            prior_loss = prior_loss.mean()
+
+        loss = torch.mean(
+            (weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1),
+            1,
+        )
+        loss = loss.mean()
+
+        if args.with_prior_preservation:
+            loss = loss + args.prior_loss_weight * prior_loss
+
+        print(f"Batch {num}: loss = {loss.item()}")
+        accelerator.backward(loss)
+
+        if accelerator.sync_gradients:
+            accelerator.clip_grad_norm_(transformer_lora_parameters, args.max_grad_norm)
+
+        # Record gradients (including last layer)
+        get_record_gradient_hook(transformer, named_grads)(None)
+        for n, p in transformer.named_parameters():
+            if p.grad is not None:
+                p.grad = None
+
+    torch.cuda.empty_cache()
+
+    # Average gradients across all batches
+    for key in tqdm(named_grads.keys(), desc="Computing gradient averages"):
+        try:
+            tensors = named_grads[key]
+            named_grads[key] = torch.stack(tensors, dim=0).mean(dim=0)
+        except Exception as e:
+            log.error(f"Error processing key {key}: {e}")
+
+    import os
+    torch.save(named_grads, os.path.join(args.output_dir, "fixed_noise_gradient.pt"))
+    log.info("Saved fixed-noise gradient to %s", os.path.join(args.output_dir, "fixed_noise_gradient.pt"))
+
+    # Cleanup hooks
+    for hook in hooks:
+        hook.remove()
+
+    torch.cuda.empty_cache()
+    return named_grads
+
+
 @torch.no_grad()
 def reinit_lora_module_seg(name, module, init_config, adapter_name, additional_info):
     r"""
@@ -1060,12 +1235,20 @@ def reinit_fft_weights(name, module, init_config, additional_info):
         if weight_name not in fft_weights or weight_name not in pretrained_weights:
             log.warning(f"FFT or pretrained weight not found for {weight_name}, skipping.")
             return inited_signal
-        delta = (fft_weights[weight_name] - pretrained_weights[weight_name]).cuda().float()
+        # For delta W, should use reverse symbol
+        delta = -(fft_weights[weight_name] - pretrained_weights[weight_name]).cuda().float()
 
         if init_config['direction'] == 'LoRA-One':
             grads = -delta
             m, n = grads.shape
             U, S, V = torch.linalg.svd(grads)
+            # Validate if svd de-compose is right
+
+            # U, S, Vh = torch.linalg.svd(grads, full_matrices=True)
+            # 注意：Vh 已经是 V 的共轭转置，直接使用
+            A_reconstructed = U @ torch.diag(S) @ V
+            print(torch.allclose(grads, A_reconstructed))  # 应为 True
+
             rank = (S > 1e-5).sum().item()
             B = U[:, :lora_r] @ torch.diag(torch.sqrt(S[:lora_r])) / torch.sqrt(S[0])
             A = torch.diag(torch.sqrt(S[:lora_r])) @ V[:lora_r, :] / torch.sqrt(S[0])

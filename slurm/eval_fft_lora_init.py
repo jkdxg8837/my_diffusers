@@ -19,6 +19,7 @@ import torch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from peft import LoraConfig
+from peft.utils import get_peft_model_state_dict
 from diffusers import SD3Transformer2DModel, StableDiffusion3Pipeline
 from diffusers.training_utils import free_memory
 from lora_one_utils import reinit_lora_from_fft
@@ -34,7 +35,8 @@ SEED = 42
 NUM_IMAGES = 5
 
 # Steps to evaluate.  500 = final output dir (no checkpoint- prefix).
-CHECKPOINT_STEPS = [100, 200, 300, 400, 500]
+CHECKPOINT_STEPS = [1, 10, 20, 50, 100, 200, 300, 400]
+# CHECKPOINT_STEPS = [0, 1, 10, 20, 50]
 MAX_STEP = 500
 
 unique_token = "sks"
@@ -59,24 +61,24 @@ INIT_CONFIGS = {
         "mode": "gradient",
         "direction": "LoRA-One",
         "scale": "stable",
-        "stable_gamma": 64,
+        "stable_gamma": 36,
         "dtype": "fp32",
         "lora_module": "all",
     },
-    "lora_ga": {
-        "mode": "gradient",
-        "direction": "LoRA-GA",
-        "scale": "stable",
-        "stable_gamma": 64,
-        "dtype": "fp32",
-        "lora_module": "all",
-    },
-    "svd": {
-        "mode": "svd",
-        "scale": "default",
-        "dtype": "fp32",
-        "lora_module": "all",
-    },
+    # "lora_ga": {
+    #     "mode": "gradient",
+    #     "direction": "LoRA-GA",
+    #     "scale": "stable",
+    #     "stable_gamma": 36,
+    #     "dtype": "fp32",
+    #     "lora_module": "all",
+    # },
+    # "svd": {
+    #     "mode": "svd",
+    #     "scale": "default",
+    #     "dtype": "fp32",
+    #     "lora_module": "all",
+    # },
 }
 
 # ---------------------------------------------------------------------------
@@ -183,8 +185,14 @@ def main():
 
             # Generate evaluation images
             output_dir = os.path.join(OUTPUT_BASE, method_name, f"step-{step}")
-            print(f"  Generating images -> {output_dir}")
-            generate_images(pipeline, output_dir, SEED, NUM_IMAGES)
+            # print(f"  Generating images -> {output_dir}")
+            # generate_images(pipeline, output_dir, SEED, NUM_IMAGES)
+
+            # Save LoRA weights for debugging
+            lora_state = get_peft_model_state_dict(pipeline.transformer)
+            lora_save_path = os.path.join(output_dir, "pytorch_lora_weights.pt")
+            torch.save(lora_state, lora_save_path)
+            print(f"  Saved LoRA weights -> {lora_save_path}")
 
             print(f"  Done: {method_name} step {step}")
 

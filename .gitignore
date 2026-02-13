@@ -195,3 +195,7 @@ slurm/eval_fft_lora_init
 *.pkl
 
 *.safetensors
+
+slurm/eval_fft_lora_init*
+
+trained-*

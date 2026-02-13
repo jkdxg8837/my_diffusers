@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 script_dir = Path("/home/j/jiayang_gu/workspace/diffusers")
-output_path = "/home/j/jiayang_gu/workspace/diffusers/slurm/dog-fft/checkpoint-100/"
+output_path = "/home/j/jiayang_gu/workspace/diffusers/slurm/dog-weight-fft-lowerlr/checkpoint-50/"
 cmd = [
     sys.executable,
     str(script_dir / "eval_dreambooth_sd3_fft.py"),

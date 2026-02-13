@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-#SBATCH --job-name=eval_fft_lora_init
+#SBATCH --job-name=eval_flux_lora
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:ampere_a100:1
+#SBATCH --gres=gpu:lovelace_l40:1
 #SBATCH --account=su007-hw-gpu
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
@@ -17,4 +17,4 @@ source /home/j/jiayang_gu/.bashrc
 source activate zimage
 
 ## Execute ##
-python eval_fft_lora_init.py
+python grad_diver.py
