@@ -10,6 +10,7 @@ For each FFT checkpoint step, applies three initialization methods:
 No training is performed.  Images are generated for evaluation only.
 """
 
+import argparse
 import copy
 import os
 import sys
@@ -34,8 +35,17 @@ RANK = 32
 SEED = 42
 NUM_IMAGES = 5
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rank", type=int, default=RANK, help="LoRA rank")
+    parser.add_argument("--scale_factor", type=float, default=1.0, help="Scale factor for delta in gradient init mode")
+    parser.add_argument("--rank_threshold", type=float, default=None,
+                        help="Energy threshold (0-1) for rank-95 filtering. "
+                             "Only reinit modules whose rank_t at this threshold <= LoRA rank.")
+    return parser.parse_args()
+
 # Steps to evaluate.  500 = final output dir (no checkpoint- prefix).
-CHECKPOINT_STEPS = [1, 10, 20, 50, 100, 200, 300, 400]
+CHECKPOINT_STEPS = [1, 10, 100, 200, 400]
 # CHECKPOINT_STEPS = [0, 1, 10, 20, 50]
 MAX_STEP = 500
 
@@ -115,8 +125,22 @@ def generate_images(pipeline, output_dir, seed, num_images):
 # ---------------------------------------------------------------------------
 
 def main():
+    args = parse_args()
+    rank = args.rank
+    scale_factor = args.scale_factor
+    rank_threshold = args.rank_threshold
+    output_base = OUTPUT_BASE
+    if rank != RANK:
+        output_base = f"{output_base}_rank{rank}"
+    if scale_factor != 1.0:
+        output_base = f"{output_base}_scale{scale_factor}"
+    if rank_threshold is not None:
+        output_base = f"{output_base}_rt{rank_threshold}"
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     weight_dtype = torch.float16
+
+    print(f"Running with rank={rank}, scale_factor={scale_factor}, rank_threshold={rank_threshold}, output -> {output_base}")
 
     # ------------------------------------------------------------------
     # Load pipeline once (VAE + text encoders stay in memory throughout)
@@ -141,7 +165,7 @@ def main():
         for step in CHECKPOINT_STEPS:
             current += 1
             print(f"\n{'=' * 60}")
-            print(f"[{current}/{total}] Method: {method_name}  Step: {step}")
+            print(f"[{current}/{total}] Method: {method_name}  Step: {step}  Rank: {rank}")
             print("=" * 60)
 
             # Check FFT weights exist
@@ -159,8 +183,8 @@ def main():
 
             # Add LoRA adapter with random init (will be overwritten by reinit)
             lora_config = LoraConfig(
-                r=RANK,
-                lora_alpha=RANK,
+                r=rank,
+                lora_alpha=rank,
                 init_lora_weights="gaussian",
                 target_modules=TARGET_MODULES,
             )
@@ -169,12 +193,18 @@ def main():
             # Load FFT weights
             print(f"  Loading FFT weights from {fft_path}")
             fft_state = torch.load(fft_path, map_location="cpu")
-
+            # Print key in fft_state
+            # for key in fft_state.keys():
+                # print(key)
             # Reinitialize LoRA A/B from FFT weight deltas
             init_config = copy.deepcopy(init_config_template)
+            if scale_factor != 1.0:
+                init_config["scale_factor"] = scale_factor
             print(f"  Reinitializing LoRA ({method_name})...")
+            output_dir = os.path.join(output_base, method_name, f"step-{step}")
             reinit_lora_from_fft(
-                transformer, init_config, fft_state, pretrained_state,
+                transformer, init_config, fft_state, pretrained_state, output_dir,
+                rank=rank, rank_threshold=rank_threshold
             )
 
             # Swap transformer into pipeline
@@ -184,15 +214,15 @@ def main():
             torch.cuda.empty_cache()
 
             # Generate evaluation images
-            output_dir = os.path.join(OUTPUT_BASE, method_name, f"step-{step}")
+            
             # print(f"  Generating images -> {output_dir}")
             # generate_images(pipeline, output_dir, SEED, NUM_IMAGES)
 
             # Save LoRA weights for debugging
-            lora_state = get_peft_model_state_dict(pipeline.transformer)
-            lora_save_path = os.path.join(output_dir, "pytorch_lora_weights.pt")
-            torch.save(lora_state, lora_save_path)
-            print(f"  Saved LoRA weights -> {lora_save_path}")
+            # lora_state = get_peft_model_state_dict(pipeline.transformer)
+            # lora_save_path = os.path.join(output_dir, "pytorch_lora_weights.pt")
+            # torch.save(lora_state, lora_save_path)
+            # print(f"  Saved LoRA weights -> {lora_save_path}")
 
             print(f"  Done: {method_name} step {step}")
 

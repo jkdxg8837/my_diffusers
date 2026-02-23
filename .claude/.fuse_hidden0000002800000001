@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:arxiv.org)",
+      "Bash(python3:*)",
+      "Bash(module list:*)",
+      "Bash(conda info:*)",
+      "Bash(conda run -n omini python3:*)"
+    ]
+  }
+}

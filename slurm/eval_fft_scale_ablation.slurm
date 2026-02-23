@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#SBATCH --job-name=eval_fft_lora_init
+#SBATCH --job-name=eval_fft_scale
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:ampere_a100:1
 #SBATCH --account=su007-hw-gpu
@@ -17,7 +17,8 @@ source /home/j/jiayang_gu/.bashrc
 source activate zimage
 
 ## Execute ##
-for RANK in 64; do
-    echo "===== Running rank=${RANK} ====="
-    python -u eval_fft_lora_init.py --rank ${RANK}
+RANK=64
+for SCALE in 1 5 10 30 50 100 500 1000; do
+    echo "===== Running rank=${RANK} scale_factor=${SCALE} ====="
+    python -u eval_fft_lora_init.py --rank ${RANK} --scale_factor ${SCALE}
 done

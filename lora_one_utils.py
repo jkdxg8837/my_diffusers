@@ -1,3 +1,4 @@
+import sys
 import torch
 from tqdm import tqdm
 import math
@@ -7,6 +8,34 @@ from peft.tuners.lora.layer import Linear as LoraLinear
 import logging
 log = logging.getLogger(__name__)
 from typing import Tuple, List, Dict
+
+# Module-level buffer for SVD diagnostics
+_svd_diagnostics = []
+
+def reset_svd_diagnostics():
+    global _svd_diagnostics
+    _svd_diagnostics = []
+
+def print_svd_diagnostics_summary():
+    global _svd_diagnostics
+    if not _svd_diagnostics:
+        return
+    print("\n" + "=" * 70, flush=True)
+    print("LoRA Init Diagnostics Summary", flush=True)
+    print("=" * 70, flush=True)
+    print(f"{'Module Name':<55} {'Energy Ratio':>12} {'Allclose':>8}", flush=True)
+    print("-" * 70, flush=True)
+    for d in _svd_diagnostics:
+        print(f"{d['name']:<55} {d['energy_ratio']:>12.6f} {str(d['allclose']):>8}", flush=True)
+    energy_ratios = [d['energy_ratio'] for d in _svd_diagnostics]
+    allclose_all = all(d['allclose'] for d in _svd_diagnostics)
+    print("-" * 70, flush=True)
+    print(f"{'Mean energy ratio:':<55} {sum(energy_ratios)/len(energy_ratios):>12.6f}", flush=True)
+    print(f"{'Min energy ratio:':<55} {min(energy_ratios):>12.6f}", flush=True)
+    print(f"{'Max energy ratio:':<55} {max(energy_ratios):>12.6f}", flush=True)
+    print(f"{'All allclose passed:':<55} {str(allclose_all):>8}", flush=True)
+    print("=" * 70 + "\n", flush=True)
+    _svd_diagnostics = []
 from diffusers.training_utils import (
     _set_state_dict_into_text_encoder,
     cast_training_params,
@@ -943,26 +972,30 @@ def reinit_lora_module(name, module, init_config, additional_info):
             )
     elif init_mode == "gradient":
         named_grad = additional_info["named_grads"]
-        # print("*************************")
         grad_name = name + '.weight'
         grads = named_grad[grad_name]
 
         if init_config['direction'] == 'LoRA-One':
-            # V = V.T
             grads = -grads.cuda().float()
             m, n = grads.shape
 
-            # grads = grads * (m**0.5)
             U, S, V = torch.linalg.svd(grads)
 
-            rank = (S > 1e-5).sum().item()
+            # Store diagnostics if provided
+            A_reconstructed = U @ torch.diag(S) @ V
+            allclose_result = torch.allclose(grads, A_reconstructed)
+            energy_ratio = ((S[:lora_r]**2).sum() / (S**2).sum()).item()
+            if "diagnostics" in additional_info:
+                additional_info["diagnostics"].append({
+                    "name": name,
+                    "energy_ratio": energy_ratio,
+                    "allclose": allclose_result,
+                })
+                print(name, energy_ratio, allclose_result)
 
-            # B = U[:, :lora_r] @ torch.diag(torch.sqrt(S[:lora_r])) / torch.sqrt(S[0])
-            # A = torch.diag(torch.sqrt(S[:lora_r])) @ V[:lora_r, :] / torch.sqrt(S[0])
+            rank = (S > 1e-5).sum().item()
             B = U[:, :lora_r] @ torch.diag(torch.sqrt(S[:lora_r])) / torch.sqrt(S[0])
             A = torch.diag(torch.sqrt(S[:lora_r])) @ V[:lora_r, :] / torch.sqrt(S[0])
-            # B = U[:, :lora_r] @ torch.diag(torch.sqrt(S[:lora_r]))
-            # A = torch.diag(torch.sqrt(S[:lora_r])) @ V[:lora_r, :]
             if torch.isnan(A).any() or torch.isnan(B).any():
                 print(f"SVD initialization resulted in NaN for {name}. Skipping initialization.")
                 return
@@ -1072,17 +1105,38 @@ def reinit_lora(model, init_config, additional_info):
     r"""
     Reinitialize the lora model with the given configuration.
     """
+    diagnostics = []
+    additional_info["diagnostics"] = diagnostics
     inited_modules = []
     for name, module in tqdm(
         model.named_modules(),
         desc="Reinitializing Lora",
         total=len(list(model.named_modules())),
     ):
-        
+
         if isinstance(module, LoraLayer):
             if_init = reinit_lora_module(name, module, init_config, additional_info)
             if if_init:
                 inited_modules.append(name)
+
+    # Print diagnostics summary
+    if diagnostics:
+        print("\n" + "=" * 70)
+        print("LoRA Initialization Diagnostics Summary (from gradient)")
+        print("=" * 70)
+        print(f"{'Module Name':<55} {'Energy Ratio':>12} {'Allclose':>8}")
+        print("-" * 70)
+        for d in diagnostics:
+            print(f"{d['name']:<55} {d['energy_ratio']:>12.6f} {str(d['allclose']):>8}")
+        energy_ratios = [d['energy_ratio'] for d in diagnostics]
+        allclose_all = all(d['allclose'] for d in diagnostics)
+        print("-" * 70)
+        print(f"{'Mean energy ratio:':<55} {sum(energy_ratios)/len(energy_ratios):>12.6f}")
+        print(f"{'Min energy ratio:':<55} {min(energy_ratios):>12.6f}")
+        print(f"{'Max energy ratio:':<55} {max(energy_ratios):>12.6f}")
+        print(f"{'All allclose passed:':<55} {str(allclose_all):>8}")
+        print("=" * 70 + "\n")
+
     return model, inited_modules
 
 @torch.no_grad()
@@ -1103,9 +1157,11 @@ def reinit_fft_weights(name, module, init_config, additional_info):
     reinit_end = init_config.get("reinit_pos_end", 23)
     reinit_lora_modules = init_config.get("lora_module", "all")
     lora_r = min(module.lora_A.default.weight.shape)
+    lora_r_b = min(module.lora_B.default.weight.shape)
+    lora_r = min(lora_r, lora_r_b)
     a_dim = max(module.lora_A.default.weight.shape)
     b_dim = max(module.lora_B.default.weight.shape)
-
+    
     try:
         layer_num_str = name.split(".")[1]
         layer_num = int(layer_num_str)
@@ -1232,32 +1288,55 @@ def reinit_fft_weights(name, module, init_config, additional_info):
             )
     elif init_mode == "gradient":
         # Use delta = fft_weight - pretrained_weight as the gradient
+        # print(weight_name)
         if weight_name not in fft_weights or weight_name not in pretrained_weights:
             log.warning(f"FFT or pretrained weight not found for {weight_name}, skipping.")
+            print(f"FFT or pretrained weight not found for {weight_name}, skipping.")
             return inited_signal
         # For delta W, should use reverse symbol
         delta = -(fft_weights[weight_name] - pretrained_weights[weight_name]).cuda().float()
+        
+        # Apply scale factor if provided (scales the delta before SVD)
+        scale_factor = init_config.get("scale_factor", 1.0)
+        if scale_factor != 1.0:
+            delta = delta * scale_factor
 
         if init_config['direction'] == 'LoRA-One':
             grads = -delta
             m, n = grads.shape
-            U, S, V = torch.linalg.svd(grads)
+            # U, S, V = torch.linalg.svd(grads)
             # Validate if svd de-compose is right
 
-            # U, S, Vh = torch.linalg.svd(grads, full_matrices=True)
-            # 注意：Vh 已经是 V 的共轭转置，直接使用
-            A_reconstructed = U @ torch.diag(S) @ V
-            print(torch.allclose(grads, A_reconstructed))  # 应为 True
+            U, S, Vh = torch.linalg.svd(grads, full_matrices=True)
+
+            # Print S matrix first 30 singular values and mean
+            s_top30 = S[:30].cpu().tolist()
+            # print(f"[S] {name}: {' '.join(f'{v:.6f}' for v in s_top30)}")
+            # print(f"[S mean] {name}: {S.mean().item():.6f}")
 
             rank = (S > 1e-5).sum().item()
             B = U[:, :lora_r] @ torch.diag(torch.sqrt(S[:lora_r])) / torch.sqrt(S[0])
-            A = torch.diag(torch.sqrt(S[:lora_r])) @ V[:lora_r, :] / torch.sqrt(S[0])
+            A = torch.diag(torch.sqrt(S[:lora_r])) @ Vh[:lora_r, :] / torch.sqrt(S[0])
             if torch.isnan(A).any() or torch.isnan(B).any():
                 print(f"SVD initialization resulted in NaN for {name}. Skipping initialization.")
                 return inited_signal
+            all_close_result_rank = torch.allclose(grads, U[:, :lora_r] @ torch.diag(S[:lora_r]) @ Vh[:lora_r, :])
+            energy_ratio = ((S[:lora_r]**2).sum() / (S**2).sum()).item()
+            additional_info["diagnostics"].append({
+                "name": name,
+                "energy_ratio": energy_ratio,
+                # "allclose": allclose_result,
+                "allclose_rank": all_close_result_rank,
+            })
         elif init_config['direction'] == "LoRA-GA":
             m, n = delta.shape
             U, S, V = torch.linalg.svd(delta.float())
+
+            # Print S matrix first 30 singular values and mean
+            s_top30 = S[:30].cpu().tolist()
+            print(f"[S] {name}: {' '.join(f'{v:.6f}' for v in s_top30)}")
+            print(f"[S mean] {name}: {S.mean().item():.6f}")
+
             B = U[:, lora_r : 2 * lora_r]
             A = V[:lora_r, :]
             if torch.isnan(A).any() or torch.isnan(B).any():
@@ -1322,7 +1401,7 @@ def reinit_fft_weights(name, module, init_config, additional_info):
         return inited_signal
 
 
-def reinit_lora_from_fft(model, init_config, fft_state_dict, pretrained_state_dict):
+def reinit_lora_from_fft(model, init_config, fft_state_dict, pretrained_state_dict, output_path, rank=None, rank_threshold=None):
     r"""
     Reinitialize LoRA A/B weights from full-finetune weight deltas.
 
@@ -1331,23 +1410,76 @@ def reinit_lora_from_fft(model, init_config, fft_state_dict, pretrained_state_di
         init_config: Init config dict (from yaml).
         fft_state_dict: State dict from trainable_weights.pt (full finetune).
         pretrained_state_dict: State dict from the pretrained model.
+        rank: LoRA rank. If provided with rank_threshold, only reinit modules whose rank_t <= rank.
+        rank_threshold: Energy threshold (0-1) for computing rank_t via SVD cumulative energy.
     Returns:
         (model, inited_modules)
     """
+    import os
+    diagnostics = []
     additional_info = {
         "fft_weights": fft_state_dict,
         "pretrained_weights": pretrained_state_dict,
+        "diagnostics": diagnostics,
     }
     inited_modules = []
-    for name, module in tqdm(
-        model.named_modules(),
-        desc="Reinitializing LoRA from FFT weights",
-        total=len(list(model.named_modules())),
-    ):
-        if isinstance(module, LoraLayer):
-            if_init = reinit_fft_weights(name, module, init_config, additional_info)
-            if if_init:
-                inited_modules.append(name)
+    lora_modules = {name: module for name, module in model.named_modules() if isinstance(module, LoraLayer)}
+
+    # Compute and save all weight deltas (fft - pretrained)
+    module_deltas = {
+        name: (fft_state_dict[name + '.weight'] - pretrained_state_dict[name + '.weight']).cpu()
+        for name in lora_modules
+        if name + '.weight' in fft_state_dict and name + '.weight' in pretrained_state_dict
+    }
+    # torch.save(module_deltas, os.path.join(output_path, "module_deltas.pt"))
+    # print(f"Saved {len(module_deltas)} module deltas to {os.path.join(output_path, 'module_deltas.pt')}")
+
+    # Compute rank_t for each module if rank filtering is enabled
+    rank_t_info = {}
+    if rank is not None and rank_threshold is not None:
+        for name, delta in module_deltas.items():
+            W = delta.float()
+            U, S, Vh = torch.linalg.svd(W, full_matrices=False)
+            energy = torch.cumsum(S ** 2, dim=0) / torch.sum(S ** 2)
+            min_dim = min(W.shape)
+            t = rank_threshold
+            rank_t = int((energy < t).sum().item()) + 1
+            rank_t = min(rank_t, min_dim)
+            rank_t_info[name] = rank_t
+        print(f"\nRank filtering enabled (LoRA rank={rank}, threshold={rank_threshold}):")
+        for name, rt in rank_t_info.items():
+            status = "REINIT" if rt <= rank else "SKIP"
+            print(f"  {name}: rank_t={rt} [{status}]")
+        print()
+
+    # Reinitialize LoRA weights
+    for name, module in tqdm(lora_modules.items(), desc="Reinitializing LoRA from FFT weights"):
+        # Skip modules whose rank_t exceeds the LoRA rank
+        if rank is not None and rank_threshold is not None and name in rank_t_info and rank_t_info[name] > rank:
+            continue
+        if_init = reinit_fft_weights(name, module, init_config, additional_info)
+        if if_init:
+            inited_modules.append(name)
+
+    # Print diagnostics summary
+    if diagnostics:
+        print("\n" + "=" * 70)
+        print("LoRA Initialization Diagnostics Summary (from FFT weights)")
+        print("=" * 70)
+        print(f"{'Module Name':<55} {'Energy Ratio':>12} {'Allclose':>8}")
+        print("-" * 70)
+        for d in diagnostics:
+            print(f"{d['name']:<55} {d['energy_ratio']:>12.6f} {str(d['allclose_rank']):>8}")
+        energy_ratios = [d['energy_ratio'] for d in diagnostics]
+        # allclose_all = all(d['allclose'] for d in diagnostics)
+        allclose_rank = all(d['allclose_rank'] for d in diagnostics)
+        print("-" * 70)
+        print(f"{'Mean energy ratio:':<55} {sum(energy_ratios)/len(energy_ratios):>12.6f}")
+        print(f"{'Min energy ratio:':<55} {min(energy_ratios):>12.6f}")
+        print(f"{'Max energy ratio:':<55} {max(energy_ratios):>12.6f}")
+        print(f"{'All allclose_rank passed:':<55} {str(allclose_rank):>8}")
+        print("=" * 70 + "\n")
+
     return model, inited_modules
 
 

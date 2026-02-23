@@ -199,3 +199,5 @@ slurm/eval_fft_lora_init
 slurm/eval_fft_lora_init*
 
 trained-*
+
+*.pt
