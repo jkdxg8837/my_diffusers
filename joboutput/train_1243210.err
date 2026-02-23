@@ -1,0 +1,245 @@
+You set `add_prefix_space`. The tokenizer needs to be converted from the slow tokenizers
+You are using a model of type clip_text_model to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+You are using a model of type clip_text_model to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+You are using a model of type t5 to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+{'use_dynamic_shifting', 'use_exponential_sigmas', 'use_karras_sigmas', 'use_beta_sigmas', 'stochastic_sampling', 'invert_sigmas', 'base_image_seq_len', 'time_shift_type', 'max_image_seq_len', 'base_shift', 'max_shift', 'shift_terminal'} was not found in config. Values will be initialized to default values.
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:01<00:01,  1.39s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.32s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.33s/it]
+{'mid_block_add_attention'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing AutoencoderKL.
+
+All the weights of AutoencoderKL were initialized from the model checkpoint at stabilityai/stable-diffusion-3-medium-diffusers.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use AutoencoderKL for predictions without further training.
+{'qk_norm', 'dual_attention_layers'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing SD3Transformer2DModel.
+
+All the weights of SD3Transformer2DModel were initialized from the model checkpoint at stabilityai/stable-diffusion-3-medium-diffusers.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use SD3Transformer2DModel for predictions without further training.
+{'feature_extractor', 'image_encoder'} was not found in config. Values will be initialized to default values.
+Loading pipeline components...:   0%|          | 0/9 [00:00<?, ?it/s]
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s][A
+Loading checkpoint shards:  50%|█████     | 1/2 [00:03<00:03,  3.59s/it][A
+Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.39s/it][ALoading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.42s/it]
+Loaded text_encoder_3 as T5EncoderModel from `text_encoder_3` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  11%|█         | 1/9 [00:06<00:54,  6.86s/it]Loaded tokenizer_2 as CLIPTokenizer from `tokenizer_2` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loaded text_encoder_2 as CLIPTextModelWithProjection from `text_encoder_2` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  33%|███▎      | 3/9 [00:08<00:13,  2.24s/it]Loaded tokenizer as CLIPTokenizer from `tokenizer` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Instantiating SD3Transformer2DModel model under default dtype torch.bfloat16.
+{'qk_norm', 'dual_attention_layers'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing SD3Transformer2DModel.
+
+All the weights of SD3Transformer2DModel were initialized from the model checkpoint at /dcs/large/u5649209/cache/hub/models--stabilityai--stable-diffusion-3-medium-diffusers/snapshots/ea42f8cef0f178587cf766dc8129abd379c90671/transformer.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use SD3Transformer2DModel for predictions without further training.
+Loaded transformer as SD3Transformer2DModel from `transformer` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  56%|█████▌    | 5/9 [00:11<00:07,  2.00s/it]Instantiating AutoencoderKL model under default dtype torch.bfloat16.
+{'mid_block_add_attention'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing AutoencoderKL.
+
+All the weights of AutoencoderKL were initialized from the model checkpoint at /dcs/large/u5649209/cache/hub/models--stabilityai--stable-diffusion-3-medium-diffusers/snapshots/ea42f8cef0f178587cf766dc8129abd379c90671/vae.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use AutoencoderKL for predictions without further training.
+Loaded vae as AutoencoderKL from `vae` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  67%|██████▋   | 6/9 [00:11<00:04,  1.50s/it]Loaded tokenizer_3 as T5TokenizerFast from `tokenizer_3` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  78%|███████▊  | 7/9 [00:11<00:02,  1.13s/it]{'use_dynamic_shifting', 'use_exponential_sigmas', 'use_karras_sigmas', 'use_beta_sigmas', 'stochastic_sampling', 'invert_sigmas', 'base_image_seq_len', 'time_shift_type', 'max_image_seq_len', 'base_shift', 'max_shift', 'shift_terminal'} was not found in config. Values will be initialized to default values.
+Loaded scheduler as FlowMatchEulerDiscreteScheduler from `scheduler` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loaded text_encoder as CLIPTextModelWithProjection from `text_encoder` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...: 100%|██████████| 9/9 [00:12<00:00,  1.48it/s]Loading pipeline components...: 100%|██████████| 9/9 [00:12<00:00,  1.35s/it]
+Loading transformer.
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder_2'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+/dcs/pg24/u5649209/.local/lib/python3.10/site-packages/diffusers/image_processor.py:148: RuntimeWarning: invalid value encountered in cast
+  images = (images * 255).round().astype("uint8")
+You set `add_prefix_space`. The tokenizer needs to be converted from the slow tokenizers
+You are using a model of type clip_text_model to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+You are using a model of type clip_text_model to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+You are using a model of type t5 to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+{'use_dynamic_shifting', 'base_shift', 'use_exponential_sigmas', 'base_image_seq_len', 'shift_terminal', 'use_beta_sigmas', 'time_shift_type', 'use_karras_sigmas', 'max_shift', 'invert_sigmas', 'stochastic_sampling', 'max_image_seq_len'} was not found in config. Values will be initialized to default values.
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:01<00:01,  1.39s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.32s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.33s/it]
+{'mid_block_add_attention'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing AutoencoderKL.
+
+All the weights of AutoencoderKL were initialized from the model checkpoint at stabilityai/stable-diffusion-3-medium-diffusers.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use AutoencoderKL for predictions without further training.
+{'qk_norm', 'dual_attention_layers'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing SD3Transformer2DModel.
+
+All the weights of SD3Transformer2DModel were initialized from the model checkpoint at stabilityai/stable-diffusion-3-medium-diffusers.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use SD3Transformer2DModel for predictions without further training.
+{'feature_extractor', 'image_encoder'} was not found in config. Values will be initialized to default values.
+Loading pipeline components...:   0%|          | 0/9 [00:00<?, ?it/s]
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s][A
+Loading checkpoint shards:  50%|█████     | 1/2 [00:03<00:03,  3.58s/it][A
+Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.38s/it][ALoading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.41s/it]
+Loaded text_encoder_3 as T5EncoderModel from `text_encoder_3` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  11%|█         | 1/9 [00:06<00:54,  6.85s/it]Loaded text_encoder as CLIPTextModelWithProjection from `text_encoder` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  22%|██▏       | 2/9 [00:07<00:20,  2.95s/it]Instantiating SD3Transformer2DModel model under default dtype torch.bfloat16.
+{'qk_norm', 'dual_attention_layers'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing SD3Transformer2DModel.
+
+All the weights of SD3Transformer2DModel were initialized from the model checkpoint at /dcs/large/u5649209/cache/hub/models--stabilityai--stable-diffusion-3-medium-diffusers/snapshots/ea42f8cef0f178587cf766dc8129abd379c90671/transformer.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use SD3Transformer2DModel for predictions without further training.
+Loaded transformer as SD3Transformer2DModel from `transformer` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  33%|███▎      | 3/9 [00:10<00:19,  3.19s/it]Loaded tokenizer as CLIPTokenizer from `tokenizer` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loaded tokenizer_2 as CLIPTokenizer from `tokenizer_2` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loaded text_encoder_2 as CLIPTextModelWithProjection from `text_encoder_2` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  67%|██████▋   | 6/9 [00:11<00:04,  1.35s/it]{'use_dynamic_shifting', 'base_shift', 'use_exponential_sigmas', 'base_image_seq_len', 'shift_terminal', 'use_beta_sigmas', 'time_shift_type', 'use_karras_sigmas', 'max_shift', 'invert_sigmas', 'stochastic_sampling', 'max_image_seq_len'} was not found in config. Values will be initialized to default values.
+Loaded scheduler as FlowMatchEulerDiscreteScheduler from `scheduler` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loaded tokenizer_3 as T5TokenizerFast from `tokenizer_3` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  89%|████████▉ | 8/9 [00:11<00:00,  1.16it/s]Instantiating AutoencoderKL model under default dtype torch.bfloat16.
+{'mid_block_add_attention'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing AutoencoderKL.
+
+All the weights of AutoencoderKL were initialized from the model checkpoint at /dcs/large/u5649209/cache/hub/models--stabilityai--stable-diffusion-3-medium-diffusers/snapshots/ea42f8cef0f178587cf766dc8129abd379c90671/vae.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use AutoencoderKL for predictions without further training.
+Loaded vae as AutoencoderKL from `vae` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...: 100%|██████████| 9/9 [00:12<00:00,  1.41it/s]Loading pipeline components...: 100%|██████████| 9/9 [00:12<00:00,  1.34s/it]
+Loading transformer.
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder_2'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+/dcs/pg24/u5649209/.local/lib/python3.10/site-packages/diffusers/image_processor.py:148: RuntimeWarning: invalid value encountered in cast
+  images = (images * 255).round().astype("uint8")
+You set `add_prefix_space`. The tokenizer needs to be converted from the slow tokenizers
+You are using a model of type clip_text_model to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+You are using a model of type clip_text_model to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+You are using a model of type t5 to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+{'use_beta_sigmas', 'use_dynamic_shifting', 'invert_sigmas', 'use_karras_sigmas', 'time_shift_type', 'max_image_seq_len', 'base_shift', 'base_image_seq_len', 'stochastic_sampling', 'max_shift', 'shift_terminal', 'use_exponential_sigmas'} was not found in config. Values will be initialized to default values.
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:01<00:01,  1.40s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.33s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.34s/it]
+{'mid_block_add_attention'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing AutoencoderKL.
+
+All the weights of AutoencoderKL were initialized from the model checkpoint at stabilityai/stable-diffusion-3-medium-diffusers.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use AutoencoderKL for predictions without further training.
+{'qk_norm', 'dual_attention_layers'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing SD3Transformer2DModel.
+
+All the weights of SD3Transformer2DModel were initialized from the model checkpoint at stabilityai/stable-diffusion-3-medium-diffusers.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use SD3Transformer2DModel for predictions without further training.
+{'feature_extractor', 'image_encoder'} was not found in config. Values will be initialized to default values.
+Loading pipeline components...:   0%|          | 0/9 [00:00<?, ?it/s]
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s][A
+Loading checkpoint shards:  50%|█████     | 1/2 [00:03<00:03,  3.59s/it][A
+Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.39s/it][ALoading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.42s/it]
+Loaded text_encoder_3 as T5EncoderModel from `text_encoder_3` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  11%|█         | 1/9 [00:06<00:54,  6.86s/it]Loaded tokenizer_2 as CLIPTokenizer from `tokenizer_2` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loaded tokenizer_3 as T5TokenizerFast from `tokenizer_3` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  33%|███▎      | 3/9 [00:07<00:11,  1.85s/it]Instantiating SD3Transformer2DModel model under default dtype torch.bfloat16.
+{'qk_norm', 'dual_attention_layers'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing SD3Transformer2DModel.
+
+All the weights of SD3Transformer2DModel were initialized from the model checkpoint at /dcs/large/u5649209/cache/hub/models--stabilityai--stable-diffusion-3-medium-diffusers/snapshots/ea42f8cef0f178587cf766dc8129abd379c90671/transformer.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use SD3Transformer2DModel for predictions without further training.
+Loaded transformer as SD3Transformer2DModel from `transformer` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  44%|████▍     | 4/9 [00:10<00:12,  2.40s/it]Loaded tokenizer as CLIPTokenizer from `tokenizer` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Instantiating AutoencoderKL model under default dtype torch.bfloat16.
+{'mid_block_add_attention'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing AutoencoderKL.
+
+All the weights of AutoencoderKL were initialized from the model checkpoint at /dcs/large/u5649209/cache/hub/models--stabilityai--stable-diffusion-3-medium-diffusers/snapshots/ea42f8cef0f178587cf766dc8129abd379c90671/vae.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use AutoencoderKL for predictions without further training.
+Loaded vae as AutoencoderKL from `vae` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  67%|██████▋   | 6/9 [00:10<00:03,  1.25s/it]{'use_beta_sigmas', 'use_dynamic_shifting', 'invert_sigmas', 'use_karras_sigmas', 'time_shift_type', 'max_image_seq_len', 'base_shift', 'base_image_seq_len', 'stochastic_sampling', 'max_shift', 'shift_terminal', 'use_exponential_sigmas'} was not found in config. Values will be initialized to default values.
+Loaded scheduler as FlowMatchEulerDiscreteScheduler from `scheduler` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loaded text_encoder_2 as CLIPTextModelWithProjection from `text_encoder_2` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  89%|████████▉ | 8/9 [00:11<00:00,  1.02it/s]Loaded text_encoder as CLIPTextModelWithProjection from `text_encoder` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...: 100%|██████████| 9/9 [00:12<00:00,  1.23it/s]Loading pipeline components...: 100%|██████████| 9/9 [00:12<00:00,  1.35s/it]
+Loading transformer.
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder_2'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+/dcs/pg24/u5649209/.local/lib/python3.10/site-packages/diffusers/image_processor.py:148: RuntimeWarning: invalid value encountered in cast
+  images = (images * 255).round().astype("uint8")
+You set `add_prefix_space`. The tokenizer needs to be converted from the slow tokenizers
+You are using a model of type clip_text_model to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+You are using a model of type clip_text_model to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+You are using a model of type t5 to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+{'use_dynamic_shifting', 'use_exponential_sigmas', 'invert_sigmas', 'base_shift', 'use_karras_sigmas', 'max_image_seq_len', 'max_shift', 'base_image_seq_len', 'time_shift_type', 'use_beta_sigmas', 'stochastic_sampling', 'shift_terminal'} was not found in config. Values will be initialized to default values.
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:01<00:01,  1.40s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.32s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.34s/it]
+{'mid_block_add_attention'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing AutoencoderKL.
+
+All the weights of AutoencoderKL were initialized from the model checkpoint at stabilityai/stable-diffusion-3-medium-diffusers.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use AutoencoderKL for predictions without further training.
+{'qk_norm', 'dual_attention_layers'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing SD3Transformer2DModel.
+
+All the weights of SD3Transformer2DModel were initialized from the model checkpoint at stabilityai/stable-diffusion-3-medium-diffusers.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use SD3Transformer2DModel for predictions without further training.
+{'image_encoder', 'feature_extractor'} was not found in config. Values will be initialized to default values.
+Loading pipeline components...:   0%|          | 0/9 [00:00<?, ?it/s]Loaded text_encoder_2 as CLIPTextModelWithProjection from `text_encoder_2` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  11%|█         | 1/9 [00:01<00:09,  1.19s/it]Loaded tokenizer_3 as T5TokenizerFast from `tokenizer_3` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  22%|██▏       | 2/9 [00:01<00:04,  1.73it/s]Loaded tokenizer_2 as CLIPTokenizer from `tokenizer_2` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loaded text_encoder as CLIPTextModelWithProjection from `text_encoder` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  44%|████▍     | 4/9 [00:01<00:01,  3.38it/s]
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s][A
+Loading checkpoint shards:  50%|█████     | 1/2 [00:03<00:03,  3.58s/it][A
+Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.38s/it][ALoading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.41s/it]
+Loaded text_encoder_3 as T5EncoderModel from `text_encoder_3` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  56%|█████▌    | 5/9 [00:08<00:09,  2.32s/it]Instantiating SD3Transformer2DModel model under default dtype torch.bfloat16.
+{'qk_norm', 'dual_attention_layers'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing SD3Transformer2DModel.
+
+All the weights of SD3Transformer2DModel were initialized from the model checkpoint at /dcs/large/u5649209/cache/hub/models--stabilityai--stable-diffusion-3-medium-diffusers/snapshots/ea42f8cef0f178587cf766dc8129abd379c90671/transformer.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use SD3Transformer2DModel for predictions without further training.
+Loaded transformer as SD3Transformer2DModel from `transformer` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  67%|██████▋   | 6/9 [00:11<00:08,  2.68s/it]Loaded tokenizer as CLIPTokenizer from `tokenizer` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Instantiating AutoencoderKL model under default dtype torch.bfloat16.
+{'mid_block_add_attention'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing AutoencoderKL.
+
+All the weights of AutoencoderKL were initialized from the model checkpoint at /dcs/large/u5649209/cache/hub/models--stabilityai--stable-diffusion-3-medium-diffusers/snapshots/ea42f8cef0f178587cf766dc8129abd379c90671/vae.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use AutoencoderKL for predictions without further training.
+Loaded vae as AutoencoderKL from `vae` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  89%|████████▉ | 8/9 [00:12<00:01,  1.47s/it]{'use_dynamic_shifting', 'use_exponential_sigmas', 'invert_sigmas', 'base_shift', 'use_karras_sigmas', 'max_image_seq_len', 'max_shift', 'base_image_seq_len', 'time_shift_type', 'use_beta_sigmas', 'stochastic_sampling', 'shift_terminal'} was not found in config. Values will be initialized to default values.
+Loaded scheduler as FlowMatchEulerDiscreteScheduler from `scheduler` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...: 100%|██████████| 9/9 [00:12<00:00,  1.34s/it]
+Loading transformer.
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder_2'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+/dcs/pg24/u5649209/.local/lib/python3.10/site-packages/diffusers/image_processor.py:148: RuntimeWarning: invalid value encountered in cast
+  images = (images * 255).round().astype("uint8")
+You set `add_prefix_space`. The tokenizer needs to be converted from the slow tokenizers
+You are using a model of type clip_text_model to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+You are using a model of type clip_text_model to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+You are using a model of type t5 to instantiate a model of type . This is not supported for all configurations of models and can yield errors.
+{'base_image_seq_len', 'use_dynamic_shifting', 'invert_sigmas', 'stochastic_sampling', 'max_shift', 'use_exponential_sigmas', 'base_shift', 'use_beta_sigmas', 'time_shift_type', 'max_image_seq_len', 'shift_terminal', 'use_karras_sigmas'} was not found in config. Values will be initialized to default values.
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:01<00:01,  1.39s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.32s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:02<00:00,  1.34s/it]
+{'mid_block_add_attention'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing AutoencoderKL.
+
+All the weights of AutoencoderKL were initialized from the model checkpoint at stabilityai/stable-diffusion-3-medium-diffusers.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use AutoencoderKL for predictions without further training.
+{'qk_norm', 'dual_attention_layers'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing SD3Transformer2DModel.
+
+All the weights of SD3Transformer2DModel were initialized from the model checkpoint at stabilityai/stable-diffusion-3-medium-diffusers.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use SD3Transformer2DModel for predictions without further training.
+{'feature_extractor', 'image_encoder'} was not found in config. Values will be initialized to default values.
+Loading pipeline components...:   0%|          | 0/9 [00:00<?, ?it/s]Instantiating SD3Transformer2DModel model under default dtype torch.bfloat16.
+{'qk_norm', 'dual_attention_layers'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing SD3Transformer2DModel.
+
+All the weights of SD3Transformer2DModel were initialized from the model checkpoint at /dcs/large/u5649209/cache/hub/models--stabilityai--stable-diffusion-3-medium-diffusers/snapshots/ea42f8cef0f178587cf766dc8129abd379c90671/transformer.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use SD3Transformer2DModel for predictions without further training.
+Loaded transformer as SD3Transformer2DModel from `transformer` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  11%|█         | 1/9 [00:03<00:27,  3.49s/it]Loaded tokenizer as CLIPTokenizer from `tokenizer` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s][A
+Loading checkpoint shards:  50%|█████     | 1/2 [00:03<00:03,  3.59s/it][A
+Loading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.39s/it][ALoading checkpoint shards: 100%|██████████| 2/2 [00:06<00:00,  3.42s/it]
+Loaded text_encoder_3 as T5EncoderModel from `text_encoder_3` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  33%|███▎      | 3/9 [00:10<00:20,  3.46s/it]Loaded tokenizer_3 as T5TokenizerFast from `tokenizer_3` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  44%|████▍     | 4/9 [00:10<00:11,  2.32s/it]{'base_image_seq_len', 'use_dynamic_shifting', 'invert_sigmas', 'stochastic_sampling', 'max_shift', 'use_exponential_sigmas', 'base_shift', 'use_beta_sigmas', 'time_shift_type', 'max_image_seq_len', 'shift_terminal', 'use_karras_sigmas'} was not found in config. Values will be initialized to default values.
+Loaded scheduler as FlowMatchEulerDiscreteScheduler from `scheduler` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Instantiating AutoencoderKL model under default dtype torch.bfloat16.
+{'mid_block_add_attention'} was not found in config. Values will be initialized to default values.
+All model checkpoint weights were used when initializing AutoencoderKL.
+
+All the weights of AutoencoderKL were initialized from the model checkpoint at /dcs/large/u5649209/cache/hub/models--stabilityai--stable-diffusion-3-medium-diffusers/snapshots/ea42f8cef0f178587cf766dc8129abd379c90671/vae.
+If your task is similar to the task the model of the checkpoint was trained on, you can already use AutoencoderKL for predictions without further training.
+Loaded vae as AutoencoderKL from `vae` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  67%|██████▋   | 6/9 [00:10<00:03,  1.20s/it]Loaded text_encoder_2 as CLIPTextModelWithProjection from `text_encoder_2` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...:  78%|███████▊  | 7/9 [00:11<00:02,  1.19s/it]Loaded tokenizer_2 as CLIPTokenizer from `tokenizer_2` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loaded text_encoder as CLIPTextModelWithProjection from `text_encoder` subfolder of stabilityai/stable-diffusion-3-medium-diffusers.
+Loading pipeline components...: 100%|██████████| 9/9 [00:12<00:00,  1.36it/s]Loading pipeline components...: 100%|██████████| 9/9 [00:12<00:00,  1.35s/it]
+Loading transformer.
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder_2'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+/dcs/pg24/u5649209/.local/lib/python3.10/site-packages/diffusers/image_processor.py:148: RuntimeWarning: invalid value encountered in cast
+  images = (images * 255).round().astype("uint8")

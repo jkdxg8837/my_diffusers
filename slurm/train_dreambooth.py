@@ -1,0 +1,135 @@
+import os
+import subprocess
+
+# 设置环境变量
+os.environ["MODEL_NAME"] = "stabilityai/stable-diffusion-3-medium-diffusers"
+os.environ["INSTANCE_DIR"] = "./dog"
+# os.environ["OUTPUT_DIR"] = "sd3-dog-singlecard-reinit80-randomseed-woprecondition-POS-crossAtt-scaleLR"
+os.environ["OUTPUT_DIR"] = "./dog-base"
+time_step = 0.2
+re_init_schedule = "multi"
+re_init_bsz = 1
+re_init_samples = 32
+noise_samples = 1
+stable_gamma = 1
+stable_gamma_list = [64]
+# 构造命令
+
+cmd = [
+    "accelerate", "launch",
+    "--config_file", "../config/accelerate_config.yaml",
+    "../train_dreambooth_lora_one_sd3.py",
+    "--pretrained_model_name_or_path", os.environ.get("MODEL_NAME"), # 使用 os.environ.get 提供默认值以防环境变量未设置
+    "--instance_data_dir", os.environ.get("INSTANCE_DIR"),   # 使用 os.environ.get 提供默认值
+    "--output_dir", os.environ.get("OUTPUT_DIR"),       # 使用 os.environ.get 提供默认值
+    "--stable_gamma", str(stable_gamma),
+    "--mixed_precision", "fp16",
+    "--instance_prompt", "a photo of sks dog",
+    "--resolution", "512",
+    "--rank", "32",
+    "--train_batch_size", "4",
+    "--gradient_accumulation_steps", "1",
+    # "--learning_rate", "1e-4",
+    "--learning_rate", "4e-4",
+    "--report_to", "wandb",
+    "--lr_scheduler", "constant",
+    "--lr_warmup_steps", "0",
+    "--max_train_steps", "500",
+    "--validation_prompt", "A photo of sks dog in front of a building",
+    "--validation_epochs", "25",
+    "--seed", "0",
+    "--time_step", str(time_step),
+    # "--re_init_bsz", str(re_init_bsz),
+    "--repeats","8",
+    "--reinit_strategy", "all",
+    "--baseline",
+    "--max_train_steps", "500",
+    # "--with_prior_preservation",
+    # "--class_data_dir",
+    # os.environ.get("INSTANCE_DIR"),
+    # "--class_prompt",
+    # "a photo of dog",
+    # "--fixed_noise",
+    # "--noise_samples", str(noise_samples),
+    # "--reinit_only"
+            # "--push_to_hub"
+]
+
+# 构造命令
+eval_cmd = [
+    "accelerate", "launch",
+    "--config_file", "../config/accelerate_config.yaml",
+    "../eval_dreambooth_sd3.py",
+    "--pretrained_model_name_or_path", os.environ.get("MODEL_NAME"), # 使用 os.environ.get 提供默认值以防环境变量未设置
+    "--instance_data_dir", os.environ.get("INSTANCE_DIR"),   # 使用 os.environ.get 提供默认值
+    "--instance_prompt", "a photo of sks dog",
+    "--resolution", "512",
+    "--rank", "32",
+    "--train_batch_size", "1",
+    "--gradient_accumulation_steps", "1",
+    "--max_train_steps", "2",
+    "--learning_rate", "1e-4",
+    "--lr_scheduler", "constant",
+    "--lr_warmup_steps", "0",
+    "--output_dir", os.environ.get("OUTPUT_DIR"),       # 使用 os.environ.get 提供默认值
+    "--lora_scale", "1.0",
+    # "--push_to_hub"
+]
+
+# Baseline commmands
+subprocess.run(cmd)
+eval_cmd[eval_cmd.index("--output_dir") + 1] = os.environ.get("OUTPUT_DIR") + "/checkpoint-1"
+subprocess.run(eval_cmd)
+
+eval_cmd[eval_cmd.index("--output_dir") + 1] = os.environ.get("OUTPUT_DIR") + "/checkpoint-100"
+subprocess.run(eval_cmd)
+
+eval_cmd[eval_cmd.index("--output_dir") + 1] = os.environ.get("OUTPUT_DIR") + "/checkpoint-200"
+subprocess.run(eval_cmd)
+
+eval_cmd[eval_cmd.index("--output_dir") + 1] = os.environ.get("OUTPUT_DIR") + "/checkpoint-300"
+subprocess.run(eval_cmd)
+
+eval_cmd[eval_cmd.index("--output_dir") + 1] = os.environ.get("OUTPUT_DIR") + "/checkpoint-400"
+subprocess.run(eval_cmd)
+
+
+
+# New method model commands
+
+# cmd[8] = os.environ.get("OUTPUT_DIR") + "_" + "stable_gamma" + str(stable_gamma)
+# cmd[cmd.index("--stable_gamma") + 1] = str(stable_gamma)
+# subprocess.run(cmd)
+
+# clip_score_cmd = [
+#     "python",
+#     "../eval_from_dir.py",
+#     "--img_path", "./"
+# ]
+# # Define the checkpoints you want to evaluate
+# checkpoints = [0, 10, 20, 50, 100, 150, 200, 250, 300]  # Add or remove steps as needed
+# # checkpoints = [0, 1, 10, 20]  # Add or remove steps as needed
+# for stable_gamma in stable_gamma_list:
+#     # 先不加learning rate scaling
+#     # cmd[8] = os.environ.get("OUTPUT_DIR") + "_" + "lr_scale" + str(stable_gamma)
+#     # cmd[cmd.index("--lr_scale") + 1] = str(stable_gamma)
+#     cmd[8] = os.environ.get("OUTPUT_DIR") + "_" + "stable_gamma" + str(stable_gamma)
+#     cmd[cmd.index("--stable_gamma") + 1] = str(stable_gamma)
+#     subprocess.run(cmd)
+
+#     for step in checkpoints:
+#         checkpoint_path = f"{cmd[8]}/checkpoint-{step}"
+#         eval_cmd[eval_cmd.index("--output_dir") + 1] = checkpoint_path
+#         subprocess.run(eval_cmd)
+
+#     # Also evaluate the final output dir if needed
+#     eval_cmd[eval_cmd.index("--output_dir") + 1] = cmd[8]
+#     subprocess.run(eval_cmd)
+
+    # Eval 3 outputs CLIP results
+    # lora_scale = eval_cmd[eval_cmd.index("--lora_scale") + 1]
+    # for step in checkpoints:
+    #     clip_score_cmd[clip_score_cmd.index("--img_path") + 1] = f"{cmd[8]}/checkpoint-{step}/output_scale{lora_scale}"
+    #     subprocess.run(clip_score_cmd)
+    # clip_score_cmd[clip_score_cmd.index("--img_path") + 1] = f"{cmd[8]}/output_scale{lora_scale}"
+    # subprocess.run(clip_score_cmd)

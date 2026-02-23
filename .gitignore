@@ -179,3 +179,11 @@ tags
 
 # wandb
 wandb
+
+sulis_slurm
+
+slurm/dog
+
+slurm/dog-base
+
+slurm/dog4reinit
