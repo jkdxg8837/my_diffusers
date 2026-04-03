@@ -273,13 +273,27 @@ def estimate_gradient(
             bsz = model_input.shape[0]
 
 
-            u = sample_with_matched_distribution(n=bsz, mean=0, std=1.0)
-            # Save tensor u
-            # if args.all_fixed:
-            #     u_loaded = torch.load("./fixed/u_tensor.pt").to(u.device)
-            #     u = u_loaded
-
-            print("u is set to ", u)
+            # Support custom timestep schedules from init_config
+            if hasattr(args, 'init_config_dict') and args.init_config_dict is not None and 'custom_timesteps' in args.init_config_dict:
+                custom_timesteps = args.init_config_dict['custom_timesteps']
+                u = torch.tensor(custom_timesteps, dtype=torch.float32, device=model_input.device)
+                # If custom timesteps don't match batch size, repeat/sample
+                if len(u) != bsz:
+                    if len(u) < bsz:
+                        # Repeat to match batch size
+                        u = u.repeat((bsz // len(u)) + 1)[:bsz]
+                    else:
+                        # Sample random subset
+                        indices_sample = torch.randperm(len(u))[:bsz]
+                        u = u[indices_sample]
+                print(f"Using custom timesteps: {u}")
+            else:
+                u = sample_with_matched_distribution(n=bsz, mean=0, std=1.0)
+                # Save tensor u
+                # if args.all_fixed:
+                #     u_loaded = torch.load("./fixed/u_tensor.pt").to(u.device)
+                #     u = u_loaded
+                print("u is set to ", u)
 
             indices = (u * noise_scheduler_copy.config.num_train_timesteps).long()
             timesteps = noise_scheduler_copy.timesteps[indices].to(device=model_input.device)
@@ -716,17 +730,20 @@ def reinit_lora_module_seg(name, module, init_config, adapter_name, additional_i
             grads = -grads.cuda().float()
             m, n = grads.shape
 
-            # grads = grads * (m**0.5)
-            U, S, V = torch.linalg.svd(grads)
-            # print(grads.numel()**0.5)
-            rank = (S > 1e-5).sum().item()
-
-            # B = U[:, :lora_r] @ torch.diag(torch.sqrt(S[:lora_r])) / torch.sqrt(S[0])
-            # A = torch.diag(torch.sqrt(S[:lora_r])) @ V[:lora_r, :] / torch.sqrt(S[0])
-            B = U[:, :lora_r] @ torch.diag(torch.sqrt(S[:lora_r])) / torch.sqrt(S[0])
-            A = torch.diag(torch.sqrt(S[:lora_r])) @ V[:lora_r, :] / torch.sqrt(S[0])
-            # B = U[:, :lora_r] @ torch.diag(torch.sqrt(S[:lora_r]))
-            # A = torch.diag(torch.sqrt(S[:lora_r])) @ V[:lora_r, :]
+            svd_algo = init_config.get('svd_algo', 'svd')
+            if svd_algo == 'pmd':
+                U_p, V_p, d = pmd(grads, rank=lora_r,
+                                  c_u=init_config.get('pmd_c_u', 1.0),
+                                  c_v=init_config.get('pmd_c_v', 1.0),
+                                  rerank=init_config.get('rerank', False))
+                S_r = torch.abs(d.to(grads.device))
+                B = U_p @ torch.diag(torch.sqrt(S_r)) / torch.sqrt(S_r[0])
+                A = torch.diag(torch.sqrt(S_r)) @ V_p.T / torch.sqrt(S_r[0])
+            else:
+                U, S, V = torch.linalg.svd(grads)
+                rank = (S > 1e-5).sum().item()
+                B = U[:, :lora_r] @ torch.diag(torch.sqrt(S[:lora_r])) / torch.sqrt(S[0])
+                A = torch.diag(torch.sqrt(S[:lora_r])) @ V[:lora_r, :] / torch.sqrt(S[0])
             if torch.isnan(A).any() or torch.isnan(B).any():
                 print(f"SVD initialization resulted in NaN for {name}. Skipping initialization.")
                 return
@@ -979,23 +996,30 @@ def reinit_lora_module(name, module, init_config, additional_info):
             grads = -grads.cuda().float()
             m, n = grads.shape
 
-            U, S, V = torch.linalg.svd(grads)
+            svd_algo = init_config.get('svd_algo', 'svd')
+            if svd_algo == 'pmd':
+                U_p, V_p, d = pmd(grads, rank=lora_r,
+                                  c_u=init_config.get('pmd_c_u', 1.0),
+                                  c_v=init_config.get('pmd_c_v', 1.0),
+                                  rerank=init_config.get('rerank', False))
+                S_r = torch.abs(d.to(grads.device))
+                energy_ratio = 0.0  # full singular spectrum unavailable with PMD
+                B = U_p @ torch.diag(torch.sqrt(S_r)) / torch.sqrt(S_r[0])
+                A = torch.diag(torch.sqrt(S_r)) @ V_p.T / torch.sqrt(S_r[0])
+            else:
+                U, S, V = torch.linalg.svd(grads)
+                energy_ratio = ((S[:lora_r]**2).sum() / (S**2).sum()).item()
+                rank = (S > 1e-5).sum().item()
+                B = U[:, :lora_r] @ torch.diag(torch.sqrt(S[:lora_r])) / torch.sqrt(S[0])
+                A = torch.diag(torch.sqrt(S[:lora_r])) @ V[:lora_r, :] / torch.sqrt(S[0])
 
-            # Store diagnostics if provided
-            A_reconstructed = U @ torch.diag(S) @ V
-            allclose_result = torch.allclose(grads, A_reconstructed)
-            energy_ratio = ((S[:lora_r]**2).sum() / (S**2).sum()).item()
             if "diagnostics" in additional_info:
                 additional_info["diagnostics"].append({
                     "name": name,
                     "energy_ratio": energy_ratio,
-                    "allclose": allclose_result,
                 })
-                print(name, energy_ratio, allclose_result)
+                print(name, energy_ratio)
 
-            rank = (S > 1e-5).sum().item()
-            B = U[:, :lora_r] @ torch.diag(torch.sqrt(S[:lora_r])) / torch.sqrt(S[0])
-            A = torch.diag(torch.sqrt(S[:lora_r])) @ V[:lora_r, :] / torch.sqrt(S[0])
             if torch.isnan(A).any() or torch.isnan(B).any():
                 print(f"SVD initialization resulted in NaN for {name}. Skipping initialization.")
                 return
@@ -1118,24 +1142,6 @@ def reinit_lora(model, init_config, additional_info):
             if_init = reinit_lora_module(name, module, init_config, additional_info)
             if if_init:
                 inited_modules.append(name)
-
-    # Print diagnostics summary
-    if diagnostics:
-        print("\n" + "=" * 70)
-        print("LoRA Initialization Diagnostics Summary (from gradient)")
-        print("=" * 70)
-        print(f"{'Module Name':<55} {'Energy Ratio':>12} {'Allclose':>8}")
-        print("-" * 70)
-        for d in diagnostics:
-            print(f"{d['name']:<55} {d['energy_ratio']:>12.6f} {str(d['allclose']):>8}")
-        energy_ratios = [d['energy_ratio'] for d in diagnostics]
-        allclose_all = all(d['allclose'] for d in diagnostics)
-        print("-" * 70)
-        print(f"{'Mean energy ratio:':<55} {sum(energy_ratios)/len(energy_ratios):>12.6f}")
-        print(f"{'Min energy ratio:':<55} {min(energy_ratios):>12.6f}")
-        print(f"{'Max energy ratio:':<55} {max(energy_ratios):>12.6f}")
-        print(f"{'All allclose passed:':<55} {str(allclose_all):>8}")
-        print("=" * 70 + "\n")
 
     return model, inited_modules
 
@@ -1325,7 +1331,6 @@ def reinit_fft_weights(name, module, init_config, additional_info):
             additional_info["diagnostics"].append({
                 "name": name,
                 "energy_ratio": energy_ratio,
-                # "allclose": allclose_result,
                 "allclose_rank": all_close_result_rank,
             })
         elif init_config['direction'] == "LoRA-GA":
@@ -1483,6 +1488,271 @@ def reinit_lora_from_fft(model, init_config, fft_state_dict, pretrained_state_di
     return model, inited_modules
 
 
+def _simple_init_module(module, lora_A_init, lora_B_init, a_dim, b_dim,
+                        lora_A_std=0.01, lora_B_std=0.01):
+    """Apply simple random initialization to LoRA A and B weight matrices."""
+    match lora_A_init:
+        case "gaussian":
+            torch.nn.init.normal_(module.lora_A.default.weight, mean=0.0, std=lora_A_std)
+        case "kaiming":
+            torch.nn.init.kaiming_uniform_(module.lora_A.default.weight, a=math.sqrt(5))
+        case "fan_out_kaiming":
+            torch.nn.init.kaiming_normal_(module.lora_A.default.weight, mode="fan_out")
+        case "xavier":
+            torch.nn.init.xavier_normal_(module.lora_A.default.weight)
+        case "zeros":
+            torch.nn.init.zeros_(module.lora_A.default.weight)
+        case "unit":
+            torch.nn.init.normal_(module.lora_A.default.weight, mean=0.0, std=1.0 / (a_dim ** 0.5))
+        case "orthogonal":
+            torch.nn.init.orthogonal_(module.lora_A.default.weight)
+        case _:
+            torch.nn.init.kaiming_uniform_(module.lora_A.default.weight, a=math.sqrt(5))
+
+    match lora_B_init:
+        case "gaussian":
+            torch.nn.init.normal_(module.lora_B.default.weight, mean=0.0, std=lora_B_std)
+        case "kaiming":
+            torch.nn.init.kaiming_normal_(module.lora_B.default.weight)
+        case "fan_out_kaiming":
+            torch.nn.init.kaiming_normal_(module.lora_B.default.weight, mode="fan_out")
+        case "xavier":
+            torch.nn.init.xavier_normal_(module.lora_B.default.weight)
+        case "zeros":
+            torch.nn.init.zeros_(module.lora_B.default.weight)
+        case "unit":
+            torch.nn.init.normal_(module.lora_B.default.weight, mean=0.0, std=1.0 / (b_dim ** 0.5))
+        case "orthogonal":
+            torch.nn.init.orthogonal_(module.lora_B.default.weight)
+        case _:
+            torch.nn.init.zeros_(module.lora_B.default.weight)
+
+
+def reinit_lora_from_fft_p2p(
+    model,
+    init_config,
+    fft_state_dict,
+    pretrained_state_dict,
+    output_path,
+    top_k: int = None,
+    rank95_threshold: float = 0.95,
+    last_k: int = None,
+):
+    r"""
+    Reinitialize LoRA A/B weights using a priority-to-priority (p2p) strategy based on
+    per-module rank95 scores computed from full-finetune weight deltas.
+
+    For each LoRA module the weight delta  Δ = fft_weight − pretrained_weight  is computed.
+    Its *rank95* score is the minimum SVD rank needed to capture ``rank95_threshold`` (default
+    0.95) of the total singular-value energy of Δ.  Modules are then ranked by this score in
+    ascending order (lower rank95 → more intrinsically low-rank → better LoRA candidate).
+
+    Exactly one of ``top_k`` or ``last_k`` must be supplied:
+
+    * **top_k** – selects the K modules with the *lowest* rank95 (most low-rank deltas) for
+      LoRA-One reconstruction.
+    * **last_k** – selects the K modules with the *highest* rank95 (least low-rank deltas) for
+      LoRA-One reconstruction.
+
+    Selected modules are initialized via LoRA-One reconstruction from Δ,
+    **without** the ``/ torch.sqrt(S[0])`` normalization used in the original LoRA-One:
+        B = U[:, :r] @ diag(sqrt(S[:r]))
+        A = diag(sqrt(S[:r])) @ Vh[:r, :]
+
+    Remaining modules receive standard simple init (kaiming_uniform A, zeros B by default,
+    or whatever ``lora_A``/``lora_B`` keys specify in ``init_config``).
+
+    Args:
+        model: The PEFT LoRA-wrapped model.
+        init_config: Init config dict (from yaml).  Recognised keys:
+            ``scale``       – post-SVD scaling strategy (``"unit"`` / ``"gd"`` / ``"stable"``).
+            ``stable_gamma``– gamma for ``"stable"`` scale.
+            ``scale_factor``– scalar multiplier applied to Δ before SVD (default 1.0).
+            ``lora_A``      – simple-init method for A (default ``"kaiming"``).
+            ``lora_B``      – simple-init method for B (default ``"zeros"``).
+            ``lora_A_std``  – std for gaussian A init.
+            ``lora_B_std``  – std for gaussian B init.
+            ``dtype``       – cast to ``"bf16"`` / ``"fp32"`` after init.
+        fft_state_dict: State dict of the full-finetune checkpoint.
+        pretrained_state_dict: State dict of the pretrained base model.
+        output_path: Directory for optional diagnostics artifacts (currently unused).
+        top_k: Number of modules with *lowest* rank95 to receive LoRA-One reconstruction.
+        rank95_threshold: Energy fraction for computing rank95 (default 0.95).
+        last_k: Number of modules with *highest* rank95 to receive LoRA-One reconstruction.
+
+    Returns:
+        (model, inited_modules): Updated model and list of names that received LoRA-One init.
+    """
+    if top_k is None and last_k is None:
+        raise ValueError("Either top_k or last_k must be provided.")
+    if top_k is not None and last_k is not None:
+        raise ValueError("top_k and last_k are mutually exclusive; provide only one.")
+    from peft.tuners.lora import LoraLayer
+
+    lora_modules = {
+        name: module
+        for name, module in model.named_modules()
+        if isinstance(module, LoraLayer)
+    }
+
+    # ------------------------------------------------------------------
+    # Step 1: compute rank95 for every LoRA module
+    # ------------------------------------------------------------------
+    rank95_scores: Dict[str, int] = {}
+    print(f"\nComputing rank95 scores (threshold={rank95_threshold}) for {len(lora_modules)} modules...")
+    for name, module in tqdm(lora_modules.items(), desc="Computing rank95"):
+        weight_name = name + ".weight"
+        if weight_name not in fft_state_dict or weight_name not in pretrained_state_dict:
+            log.warning(f"Weight not found for {weight_name}, assigning rank95=inf.")
+            rank95_scores[name] = int(1e9)
+            continue
+        delta = (fft_state_dict[weight_name] - pretrained_state_dict[weight_name]).float()
+        # Use SVD values only (no need for U/Vh here)
+        S = torch.linalg.svdvals(delta)
+        total_energy = (S ** 2).sum()
+        if total_energy < 1e-12:
+            rank95_scores[name] = 1
+            continue
+        cumulative = torch.cumsum(S ** 2, dim=0) / total_energy
+        # First rank where cumulative energy >= threshold
+        rank95 = int((cumulative < rank95_threshold).sum().item()) + 1
+        rank95 = min(rank95, min(delta.shape))
+        rank95_scores[name] = rank95
+
+    # ------------------------------------------------------------------
+    # Step 2: rank modules by rank95 (ascending) and select top-K
+    # ------------------------------------------------------------------
+    sorted_modules: List[Tuple[str, int]] = sorted(rank95_scores.items(), key=lambda x: x[1])
+    n_total = len(sorted_modules)
+
+    if top_k is not None:
+        k_effective = min(top_k, n_total)
+        topk_set = {name for name, _ in sorted_modules[:k_effective]}
+        mode_label = f"top_k={k_effective} (lowest rank95)"
+    else:  # last_k
+        k_effective = min(last_k, n_total)
+        topk_set = {name for name, _ in sorted_modules[-k_effective:]}
+        mode_label = f"last_k={k_effective} (highest rank95)"
+
+    print(f"\nRank95 ranking (ascending) — {mode_label} get LoRA-One init:")
+    print(f"  {'Rank':>4}  {'Method':<8}  {'rank95':>6}  Module")
+    print(f"  {'-'*4}  {'-'*8}  {'-'*6}  {'-'*40}")
+    for i, (name, score) in enumerate(sorted_modules):
+        tag = "LORA-ONE" if name in topk_set else "SIMPLE"
+        score_str = str(score) if score < int(1e9) else "inf"
+        print(f"  {i+1:>4}  {tag:<8}  {score_str:>6}  {name}")
+
+
+    # ------------------------------------------------------------------
+    # Step 3 & 4: initialize each module
+    # ------------------------------------------------------------------
+    lora_A_init = init_config.get("lora_A", "kaiming")
+    lora_B_init = init_config.get("lora_B", "zeros")
+    lora_A_std  = init_config.get("lora_A_std", 0.01)
+    lora_B_std  = init_config.get("lora_B_std", 0.01)
+    scale        = init_config.get("scale", "unit")
+    scale_factor = init_config.get("scale_factor", 1.0)
+    stable_gamma = init_config.get("stable_gamma", 1.0)
+    dtype        = init_config.get("dtype", None)
+
+    diagnostics = []
+    inited_modules = []
+
+    for name, module in tqdm(lora_modules.items(), desc="Reinitializing LoRA (p2p)"):
+        lora_r = min(min(module.lora_A.default.weight.shape),
+                     min(module.lora_B.default.weight.shape))
+        a_dim  = max(module.lora_A.default.weight.shape)
+        b_dim  = max(module.lora_B.default.weight.shape)
+        weight_name = name + ".weight"
+
+        if name in topk_set:
+            # ---- LoRA-One reconstruction (without /sqrt(S[0])) ----
+            if weight_name not in fft_state_dict or weight_name not in pretrained_state_dict:
+                log.warning(f"Skipping LoRA-One init for {name}: weight not found. Falling back to simple init.")
+                _simple_init_module(module, lora_A_init, lora_B_init, a_dim, b_dim, lora_A_std, lora_B_std)
+            else:
+                # delta sign convention: negate like existing reinit_fft_weights gradient mode
+                delta = (fft_state_dict[weight_name] - pretrained_state_dict[weight_name]).cuda().float()
+                if scale_factor != 1.0:
+                    delta = delta * scale_factor
+
+                U, S, Vh = torch.linalg.svd(delta, full_matrices=False)
+
+                # Diagnostics
+                energy_ratio = ((S[:lora_r] ** 2).sum() / ((S ** 2).sum() + 1e-12)).item()
+                allclose_rank = torch.allclose(
+                    delta, U[:, :lora_r] @ torch.diag(S[:lora_r]) @ Vh[:lora_r, :]
+                )
+                diagnostics.append({
+                    "name": name,
+                    "rank95": rank95_scores[name],
+                    "energy_ratio": energy_ratio,
+                    "allclose_rank": allclose_rank,
+                })
+
+                # LoRA-One init WITHOUT /sqrt(S[0])
+                B = U[:, :lora_r] @ torch.diag(torch.sqrt(S[:lora_r]))
+                A = torch.diag(torch.sqrt(S[:lora_r])) @ Vh[:lora_r, :]
+
+                if torch.isnan(A).any() or torch.isnan(B).any():
+                    log.warning(f"SVD produced NaN for {name}. Falling back to simple init.")
+                    _simple_init_module(module, lora_A_init, lora_B_init, a_dim, b_dim, lora_A_std, lora_B_std)
+                else:
+                    # Post-SVD scaling
+                    scaling_factor = module.scaling["default"]
+                    if scale == "gd":
+                        A = A / scaling_factor
+                        B = B / scaling_factor
+                    elif scale == "stable":
+                        B = B / (stable_gamma ** 0.5)
+                        A = A / (stable_gamma ** 0.5)
+                    # "unit" or unrecognised: no additional scaling
+
+                    module.lora_B.default.weight = torch.nn.Parameter(B.contiguous())
+                    module.lora_A.default.weight = torch.nn.Parameter(A.contiguous())
+                    inited_modules.append(name)
+
+                del delta, U, S, Vh
+        else:
+            # ---- Simple init ----
+            _simple_init_module(module, lora_A_init, lora_B_init, a_dim, b_dim, lora_A_std, lora_B_std)
+
+        # dtype cast (applied to all modules)
+        with torch.no_grad():
+            if dtype == "bf16":
+                module.lora_A.default.weight.data = module.lora_A.default.weight.data.to(torch.bfloat16)
+                module.lora_B.default.weight.data = module.lora_B.default.weight.data.to(torch.bfloat16)
+            elif dtype == "fp32":
+                module.lora_A.default.weight.data = module.lora_A.default.weight.data.to(torch.float32)
+                module.lora_B.default.weight.data = module.lora_B.default.weight.data.to(torch.float32)
+
+    # ------------------------------------------------------------------
+    # Print diagnostics for LoRA-One-initialized modules
+    # ------------------------------------------------------------------
+    if diagnostics:
+        print("\n" + "=" * 76)
+        print(f"LoRA P2P Init Diagnostics  (top_k={k_effective}, threshold={rank95_threshold})")
+        print("=" * 76)
+        print(f"  {'Module Name':<50} {'rank95':>6}  {'Energy':>10}  {'Allclose':>8}")
+        print(f"  {'-'*50} {'-'*6}  {'-'*10}  {'-'*8}")
+        for d in diagnostics:
+            print(
+                f"  {d['name']:<50} {d['rank95']:>6d}  {d['energy_ratio']:>10.6f}  {str(d['allclose_rank']):>8}"
+            )
+        energy_ratios = [d["energy_ratio"] for d in diagnostics]
+        allclose_all  = all(d["allclose_rank"] for d in diagnostics)
+        print(f"  {'-'*50} {'-'*6}  {'-'*10}  {'-'*8}")
+        print(f"  {'Mean energy ratio:':<50} {'':>6}  {sum(energy_ratios)/len(energy_ratios):>10.6f}")
+        print(f"  {'Min energy ratio:':<50} {'':>6}  {min(energy_ratios):>10.6f}")
+        print(f"  {'Max energy ratio:':<50} {'':>6}  {max(energy_ratios):>10.6f}")
+        print(f"  {'All allclose_rank passed:':<50} {'':>6}  {'':>10}  {str(allclose_all):>8}")
+        print("=" * 76 + "\n")
+
+    print(f"reinit_lora_from_fft_p2p complete: {len(inited_modules)} LoRA-One modules, "
+          f"{len(lora_modules) - len(inited_modules)} simple-init modules.")
+    return model, inited_modules
+
+
 def reinit_lora_seg(model, init_config, additional_info):
     r"""
     Reinitialize the lora model with the given configuration.
@@ -1499,3 +1769,127 @@ def reinit_lora_seg(model, init_config, additional_info):
             if if_init:
                 inited_modules.append(name)
     return model, inited_modules
+def soft_threshold(a: torch.Tensor, lam: float) -> torch.Tensor:
+    """Elementwise soft-thresholding (shrinkage) operator."""
+    return torch.sign(a) * torch.relu(torch.abs(a) - lam)
+def _binary_search_lambda(z: torch.Tensor, c: float, tol: float = 1e-8) -> float:
+    """
+    Find lambda such that ||S(z, lambda)||_1 == c via binary search.
+    If ||z||_1 <= c already, lambda = 0 (no shrinkage needed).
+    """
+    if z.norm(1).item() <= c:
+        return 0.0
+    lo, hi = 0.0, z.abs().max().item()
+    for _ in range(100):
+        mid = (lo + hi) / 2.0
+        val = soft_threshold(z, mid).norm(1).item()
+        if abs(val - c) < tol:
+            break
+        if val > c:
+            lo = mid
+        else:
+            hi = mid
+    return mid
+def pmd_rank1(
+    X: torch.Tensor,
+    c_u: float = 1.0,
+    c_v: float = 1.0,
+    max_iter: int = 200,
+    tol: float = 1e-6,
+) -> tuple[torch.Tensor, torch.Tensor, float]:
+    """
+    Rank-1 PMD: find sparse u, v and scalar d such that X ≈ d * u * v^T.
+
+    Args:
+        X:       (m, n) matrix
+        c_u:     L1 bound on u  (1 <= c_u <= sqrt(m))
+        c_v:     L1 bound on v  (1 <= c_v <= sqrt(n))
+        max_iter: max power-iteration steps
+        tol:     convergence threshold on ||u_new - u_old||
+
+    Returns:
+        u: (m,) unit-norm sparse left vector
+        v: (n,) unit-norm sparse right vector
+        d: scalar singular value
+    """
+    m, n = X.shape
+    # Clamp c values to valid range
+    c_u = max(1.0, min(c_u, m ** 0.5))
+    c_v = max(1.0, min(c_v, n ** 0.5))
+
+    # Initialize v from the leading right singular vector for fast convergence
+    _, _, Vt = torch.linalg.svd(X, full_matrices=False)
+    v = Vt[0]
+
+    u = torch.zeros(m, dtype=X.dtype, device=X.device)
+    for _ in range(max_iter):
+        # --- update u ---
+        z_u = X @ v
+        lam_u = _binary_search_lambda(z_u, c_u)
+        u_new = soft_threshold(z_u, lam_u)
+        norm_u = u_new.norm()
+        if norm_u < 1e-12:
+            break
+        u_new = u_new / norm_u
+
+        # --- update v ---
+        z_v = X.T @ u_new
+        lam_v = _binary_search_lambda(z_v, c_v)
+        v_new = soft_threshold(z_v, lam_v)
+        norm_v = v_new.norm()
+        if norm_v < 1e-12:
+            break
+        v_new = v_new / norm_v
+
+        # convergence check
+        delta = (u_new - u).norm().item() + (v_new - v).norm().item()
+        u, v = u_new, v_new
+        if delta < tol:
+            break
+
+    d = (u @ X @ v).item()
+    return u, v, d
+
+def pmd(
+    X: torch.Tensor,
+    rank: int = 3,
+    c_u: float = 1.0,
+    c_v: float = 1.0,
+    rerank: bool = False,
+    **kwargs,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Rank-k PMD via sequential deflation.
+
+    Args:
+        rerank: If True, re-order components by descending singular value after
+                deflation (sequential deflation does not guarantee this ordering).
+
+    Returns:
+        U: (m, rank) — left sparse factors
+        V: (n, rank) — right sparse factors
+        d: (rank,)   — singular values
+    """
+    m, n = X.shape
+    c_u = max(1.0, min(c_u, m ** 0.5))
+    c_v = max(1.0, min(c_v, n ** 0.5))
+
+    R = X.clone()
+    Us, Vs, ds = [], [], []
+
+    for _ in range(rank):
+        u, v, d = pmd_rank1(R, c_u=c_u, c_v=c_v, **kwargs)
+        Us.append(u)
+        Vs.append(v)
+        ds.append(d)
+        R = R - d * torch.outer(u, v)  # deflate
+
+    U = torch.stack(Us, dim=1)
+    V = torch.stack(Vs, dim=1)
+    d = torch.tensor(ds)
+
+    if rerank:
+        order = torch.argsort(d, descending=True)
+        U, V, d = U[:, order], V[:, order], d[order]
+
+    return U, V, d

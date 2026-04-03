@@ -256,7 +256,29 @@ def log_validation(
 
     # with autocast_ctx:
     with torch.autocast(device_type="cuda"):
-        images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
+        if args.cold_diffuse:
+            # For cold diffusion, we need to generate initial latents using blur instead of random noise
+            # We'll use a callback to replace the initial noise with blurred latents
+            from torchvision.transforms import GaussianBlur
+
+            images_list = []
+            for _ in range(args.num_validation_images):
+                # Generate initial random latents
+                latents_shape = (1, 16, args.resolution // 8, args.resolution // 8)
+                initial_latents = torch.randn(latents_shape, generator=generator, device=accelerator.device, dtype=torch_dtype)
+
+                # Apply Gaussian blur to create deterministic blur latents
+                blur_kernel_size = 5
+                blur_sigma = 2.0
+                blur_transform = GaussianBlur(kernel_size=blur_kernel_size, sigma=blur_sigma)
+                blurred_latents = blur_transform(initial_latents)
+
+                # Generate image with blurred latents as starting point
+                image = pipeline(**pipeline_args, latents=blurred_latents, generator=generator).images[0]
+                images_list.append(image)
+            images = images_list
+        else:
+            images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
     idx = 0
     for image in images:
         save_path = os.path.join(args.output_dir, "output_scale"+str(args.lora_scale), str(prompt_number))
@@ -738,6 +760,12 @@ def parse_args(input_args=None):
         help=(
             "The time step to use for the FlowMatch Euler Discrete Scheduler. If not specified, the scheduler will"
         ),
+    )
+    parser.add_argument(
+        "--cold_diffuse",
+        action="store_true",
+        default=False,
+        help="Use Deterministic Blur as noise start point instead of random noise during evaluation",
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
@@ -1299,6 +1327,7 @@ def main(args):
             revision=args.revision,
             variant=args.variant,
             torch_dtype=weight_dtype,
+            guidance_scale = 7.0
         )
         # load attention processors
 

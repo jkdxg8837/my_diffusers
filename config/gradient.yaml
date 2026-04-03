@@ -1,9 +1,10 @@
 mode: gradient
 bsz: 1
 iters: 8
-direction: LoRA-GA
+direction: LoRA-One
 max_length: 1024
 dtype: fp32
 scale: stable
 stable_gamma: 64
 # gamma = 9 has better result, raw is 128
+rerank: true  # re-order PMD components by descending singular value
